@@ -60,7 +60,10 @@ inside(M, {
 
   # 3. include different variables: treat, pre_score, girl 
   # 4. normal vs. log-normal model 
-  mod <- stan_glm(branch(outcome, "abs" ~ absalpha, "log" ~ log(absalpha)) ~ 
+  mod <- stan_glm(branch(outcome, 
+                         "abs" ~ absalpha, 
+                         "log" ~ log(absalpha), 
+                         "contrast" ~ log(absalpha) + log(absgamma) - log(abstheta)) ~ 
                     branch(predictors, 
                            "eq_1" ~ treat,
                            "eq_2" ~ treat + pre_score,
@@ -74,22 +77,12 @@ inside(M, {
                   data=df, 
                   refresh=0)
   
-  # extract posterior predictions 
-  # vector of outcome values
-  y_alpha <- as.vector(absalpha)
-  
   # matrix of draws from the posterior pred. distribution
-  yrep_alpha <-posterior_predict(mod, draws = 1000)
-  
-  # posterior results 
-  posterior_alpha <- as.array(mod)
-  mean(posterior_alpha)
-  
-  # outputs of interest
-  out <- list(
-    y_alpha = y_alpha,
-    yrep_alpha = yrep_alpha,
-    posterior_alpha = posterior_alpha)
+  yrep <- posterior_predict(mod, draws = 1000)
+  # posterior results for alpha
+  posterior_mean_outcome <- mean(as.array(mod))
+  # posterior treatment effect
+  posterior_mean_treat <- mod$coefficients["treat"]
   
 })
 
@@ -102,4 +95,20 @@ execute_multiverse(M)
 toc()
 
 # access results 
-expand(M) %>% select(.results)
+multiverse_table <- multiverse::expand(M) %>% 
+  extract_variables(mod, posterior_mean_outcome, posterior_mean_treat, yrep)
+
+# inspect posterior treatment effect sizes
+multiverse_table %>%
+  select(pre_score_calculation, 
+         outcome, 
+         predictors, 
+         obs_model, 
+         posterior_mean_treat, 
+         posterior_mean_outcome, 
+         yrep) %>%
+  arrange(outcome)
+
+# vector of obs. outcome values alpha
+y_alpha <- as.vector(data_eeg$absalpha)
+
