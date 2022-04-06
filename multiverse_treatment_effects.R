@@ -15,13 +15,8 @@ mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
 standardize <- function(a) (a - mean(a))/(2*sd(a))
 
 # create multiverse
-# 1.. different pre_score definitions
+# 1. different pre_score definitions
 # 2. contrasts as outcome 
-
-#eeg_1$contrast <- log(eeg_1$absalpha) + log(eeg_1$absgamma) - log(eeg_1$abstheta)
-#M4 <- stan_glm(contrast ~ treat, data=eeg_1, refresh=0)
-#M5 <- stan_glm(contrast ~ treat + pre_score, data=eeg_1, refresh=0)
-
 # 3. include different variables
 # 4. normal model vs. log-normal model
 
@@ -55,9 +50,6 @@ inside(M, {
                       standardize(momhealth) - standardize(smoking) - standardize(drinking)))
   
   # 2. contrasts as alternative outcome 
-  #df <- df %>%
-  #  mutate(contrast = log(absalpha) + log(absgamma) - log(abstheta))
-
   # 3. include different variables: treat, pre_score, girl 
   # 4. normal vs. log-normal model 
   mod <- stan_glm(branch(outcome, 
@@ -97,6 +89,8 @@ toc()
 # access results 
 multiverse_table <- multiverse::expand(M) %>% 
   extract_variables(mod, posterior_mean_outcome, posterior_mean_treat, yrep)
+
+# save results 
 
 # inspect posterior treatment effect sizes
 multiverse_table %>%
