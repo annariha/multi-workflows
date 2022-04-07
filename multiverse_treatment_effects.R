@@ -14,6 +14,9 @@ data_eeg <- data_eeg[withoutNA,]
 mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
 standardize <- function(a) (a - mean(a))/(2*sd(a))
 
+# test
+M1_alpha_abs <- stan_glm(absalpha ~ treat, data=data_eeg, refresh=0)
+
 # create multiverse
 # 1. different pre_score definitions
 # 2. contrasts as outcome 
@@ -62,7 +65,7 @@ inside(M, {
                            "eq_2" ~ treat + pre_score,
                            "eq_3" ~ treat + pre_score + girl,
                            "eq_4" ~ treat + girl + birthweight + gestage + 
-                             momedu + income + white - black + momhealth + 
+                             momedu + income + white + black + momhealth + 
                              smoking + drinking),
                   family = 
                     branch(obs_model, 
@@ -77,8 +80,9 @@ inside(M, {
   yrep <- posterior_predict(mod, draws = 1000)
   # posterior results for alpha
   posterior_mean_outcome <- mean(as.array(mod))
-  # posterior treatment effect
+  # posterior treatment effect: point estimate & std. error
   posterior_mean_treat <- mod$coefficients["treat"]
+  posterior_sd_treat <- mod$ses["treat"]
   
 })
 
@@ -92,7 +96,12 @@ toc()
 
 # access results 
 multiverse_table <- multiverse::expand(M) %>% 
-  extract_variables(mod, postarray, posterior_mean_outcome, posterior_mean_treat, yrep)
+  extract_variables(mod, 
+                    postarray, 
+                    posterior_mean_outcome, 
+                    posterior_mean_treat, 
+                    posterior_sd_treat,
+                    yrep)
 
 # save results 
 
@@ -105,7 +114,8 @@ d <- multiverse_table %>%
          mod,
          postarray,
          posterior_mean_treat, 
-         posterior_mean_outcome, 
+         posterior_sd_treat, 
+         posterior_mean_outcome,
          yrep) %>%
   arrange(outcome)
 
@@ -156,5 +166,4 @@ plot_post <- function(postarray, printit = FALSE, prob_val = 0.8, prob_outer_val
 
 # example plot 
 ex_post <- d$postarray[[10]]
-plot_post(ex_post)
 plot_post(ex_post, printit = TRUE)
