@@ -1,0 +1,194 @@
+---
+title: "Analyzing a multiverse of Bayesian models"
+author: "Anna Elisabeth Riha"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+if(!requireNamespace("pacman"))install.packages("pacman")
+pacman::p_load(here, haven, knitr, tictoc, tidyverse, tidybayes, rstanarm, bayesplot, cowplot, loo, purrr, multiverse)
+```
+
+Goal: illustrate and explore multiverse of Bayesian models with different (simple yet relevant) scenarios
+
+The multiverse can be built by combining e.g.,
+
+- variable selection
+- variable transformation
+- observation models
+- prior settings 
+- preprocessing regimes
+
+# Example 1: Treatment effects 
+
+In this recent [blogpost](https://statmodeling.stat.columbia.edu/2022/01/25/im-skeptical-of-that-claim-that-cash-aid-to-poor-mothers-increases-brain-activity-in-babies/), Andrew Gelman juxtaposes different ways of modeling the connections between brain activity of babies measured by EEG data and cash aid for poor mothers. He arrives at the (preliminary) conclusion that the data is not able to support the claim that cash aid increases brain activity.
+
+The analysis of treatment effects is very common in a variety of fields e.g., medicine, biology, psychology etc. and thus it is important to support modelers in taking into account the variety of possible models to arrive at robust conclusions.
+
+```{r}
+path <- here::here("Data", "159422-V2", "pnas_povreductioneeg.dta")
+data_eeg <- read_dta(path)
+names_eeg <- names(data_eeg)
+```
+
+```{r}
+# data without NAs in absalpha
+withoutNA <- !is.na(data_eeg$absalpha)
+data_eeg <- data_eeg[withoutNA,]
+```
+
+From the $383$ participants that received financial support (i.e. $\texttt{treat}=1$), observations of  $\texttt{absalpha}$ are missing for $199$ participants. $297$ of the $548$ participants in the control group have missing values for $\texttt{absalpha}$.
+
+```{r}
+# helper functions (from Andrews code)
+mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
+standardize <- function(a) (a - mean(a))/(2*sd(a))
+```
+
+For this example, the multiverse consists of 
+
+1. different sets of predictors 
+
+a) treat 
+b) treat + pre_score
+c) treat + pre_score + girl 
+d) treat + girl + birthweight + gestage + momedu + income + white + black + momhealth + smoking + drinking
+
+2. normal vs. log-transformed outcome (here: alpha band of EEG measurements)
+3. different pre_score definitions
+
+```{r}
+# initialize multiverse
+M_block = multiverse()
+```
+
+```{multiverse default-m-1, inside = M_block}
+# preprocessing (from Andrews code)
+df <- data_eeg %>% 
+  mutate(
+    girl = as.numeric(cfemalea0),
+    birthweight = as.numeric(cweightlba0_r),
+    gestage = as.numeric(cgestagewksa0_r),
+    momedu = mean_impute(as.numeric(momeduyrsa0)),
+    income = mean_impute(as.numeric(hhrevisedincomea0)),
+    white = as.numeric(mracea0) == 1,
+    black = as.numeric(mracea0) == 2,
+    momhealth = as.numeric(mgoodhealtha0),
+    smoking = as.numeric(mcigduringavgwka0_r),
+    drinking = as.numeric(malcduringavgwka0_r)
+    )
+  
+# 1. different pre_score definitions - pre_score1 from Andrews code
+df <- df %>%
+  mutate(pre_score = 
+           branch(pre_score_calculation,
+                  "pre_score1" ~ standardize(birthweight) + standardize(gestage) + 
+                    standardize(momedu) + standardize(income) + white - black + 
+                    standardize(momhealth) - standardize(smoking) - standardize(drinking),
+                  "pre_score2" ~ standardize(momedu) + standardize(income) + white - black,
+                  "pre_score3" ~ standardize(birthweight) + standardize(gestage) + 
+                    standardize(momhealth) - standardize(smoking) - standardize(drinking)
+                  )
+         )
+  
+# 2. contrasts as alternative outcome 
+# 3. include different variables: treat, pre_score, girl 
+# 4. normal vs. log-normal model 
+mod <- stan_glm(branch(outcome, 
+                       "abs" ~ absalpha,
+                       "log" ~ log(absalpha)
+                       #,"contrast" ~ log(absalpha) + log(absgamma) - log(abstheta)
+                       ) ~ 
+                  branch(predictors,
+                         "eq_1" ~ treat,
+                         "eq_2" ~ treat + pre_score,
+                         "eq_3" ~ treat + pre_score + girl,
+                         "eq_4" ~ treat + girl + birthweight + gestage + 
+                             momedu + income + white + black + momhealth + 
+                             smoking + drinking),
+                family = branch(model_fam,
+                                "normal" ~ gaussian(link = "identity")),
+                data=df,
+                refresh=0)
+
+# posterior results 
+postarray <- as.array(mod)
+# matrix of draws from the posterior pred. distribution
+yrep <- posterior_predict(mod, draws = 1000)
+# posterior results for alpha
+posterior_mean_outcome <- mean(as.array(mod))
+# posterior treatment effect: point estimate & std. error
+posterior_mean_treat <- mod$coefficients["treat"]
+posterior_sd_treat <- mod$ses["treat"]
+```
+
+```{r}
+# check the conditions 
+expand(M_block)
+```
+
+```{r}
+# run multiverse analysis
+tic()
+execute_multiverse(M_block)
+toc()
+```
+
+```{r, include=FALSE}
+# extract results
+# out <- expand(M_block) %>%
+#  mutate(index = seq(1:nrow(.))) %>%
+#  mutate(summary = map(.results, "df") ) %>%
+#  unnest_wider(c(summary))
+```
+
+```{r}
+# extract results 
+multiverse_table <- multiverse::expand(M_block) %>% 
+  extract_variables(mod, postarray, posterior_mean_outcome, posterior_mean_treat, posterior_sd_treat, yrep)
+```
+
+What are good ways to inspect and explore results in a multiverse of models? 
+
+- tables of aggregated results 
+- visual inspection e.g., side-by-side
+- animated plots e.g., in this [multiverse-vignette](https://mucollective.github.io/multiverse/articles/dance.html)
+
+What are categories and/or metrics of interest? 
+
+- effect sizes, std. errors
+- differences in elpd
+
+```{r}
+# inspect e.g. mean posterior treatment effect sizes
+multiverse_table %>%
+  select(pre_score_calculation, 
+         outcome, 
+         predictors, 
+         posterior_mean_treat,
+         posterior_sd_treat) %>%
+  arrange(outcome)
+```
+
+```{r, alpha-post-treat, message=FALSE}
+# load function 
+source("multiverse_treatment_effects.R")
+# example plots
+plot_post_ex1 <- multiverse_table$postarray[[10]]
+plot_post(plot_post_ex1, printit = TRUE)
+plot_post_ex2 <- multiverse_table$postarray[[4]]
+plot_post(plot_post_ex2, printit = TRUE)
+```
+
+# Example 2
+
+projpred + multiverse
+
+# Example 3
+
+prior sensitivity 
