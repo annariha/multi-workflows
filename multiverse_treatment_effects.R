@@ -14,9 +14,6 @@ data_eeg <- data_eeg[withoutNA,]
 mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
 standardize <- function(a) (a - mean(a))/(2*sd(a))
 
-# test
-M1_alpha_abs <- stan_glm(absalpha ~ treat, data=data_eeg, refresh=0)
-
 # create multiverse
 # 1. different pre_score definitions
 # 2. contrasts as outcome 
