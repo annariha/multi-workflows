@@ -36,6 +36,8 @@ data_eeg <- read_dta(path)
 names_eeg <- names(data_eeg)
 ```
 
+For simplicity, a first example focuses on modeling $\texttt{absalpha}$ which is ... measured in ... . 
+. 
 ```{r}
 # data without NAs in absalpha
 withoutNA <- !is.na(data_eeg$absalpha)
@@ -60,6 +62,8 @@ c) treat + pre_score + girl
 d) treat + girl + birthweight + gestage + momedu + income + white + black + momhealth + smoking + drinking
 
 2. normal vs. log-transformed outcome (here: alpha band of EEG measurements)
+
+This can be equally defined via using a 
 3. different pre_score definitions
 
 ```{r}
@@ -99,22 +103,20 @@ df <- df %>%
 # 2. contrasts as alternative outcome 
 # 3. include different variables: treat, pre_score, girl 
 # 4. normal vs. log-normal model 
-mod <- stan_glm(branch(outcome, 
-                       "abs" ~ absalpha,
-                       "log" ~ log(absalpha)
-                       #,"contrast" ~ log(absalpha) + log(absgamma) - log(abstheta)
-                       ) ~ 
-                  branch(predictors,
-                         "eq_1" ~ treat,
-                         "eq_2" ~ treat + pre_score,
-                         "eq_3" ~ treat + pre_score + girl,
-                         "eq_4" ~ treat + girl + birthweight + gestage + 
-                             momedu + income + white + black + momhealth + 
-                             smoking + drinking),
-                family = branch(model_fam,
-                                "normal" ~ gaussian(link = "identity")),
-                data=df,
-                refresh=0)
+mod <- brm(formula = absalpha ~ 
+               branch(predictors, 
+                      "eq_1" ~ treat,
+                      "eq_2" ~ treat + pre_score,
+                      "eq_3" ~ treat + pre_score + girl
+                      #,"eq_4" ~ treat + girl + birthweight + gestage + 
+                      #momedu + income + white + black + momhealth + 
+                      #smoking + drinking
+                      ),
+             data = df, 
+             family = 
+               branch(obs_model, 
+                      "normal" ~ gaussian(), 
+                      "lognormal" ~ lognormal()))
 
 # posterior results 
 postarray <- as.array(mod)
