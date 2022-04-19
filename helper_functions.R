@@ -1,3 +1,7 @@
+# helper functions (from Andrew's code)
+mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
+standardize <- function(a) (a - mean(a))/(2*sd(a))
+
 # compare posteriors visually
 # code slightly adapted from https://stackoverflow.com/questions/52875665/plotting-posterior-parameter-estimates-from-multiple-models-with-bayesplot
 # new: input can be a list of brmsfit-objects 
