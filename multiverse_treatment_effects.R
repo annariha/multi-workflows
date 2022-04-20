@@ -10,9 +10,8 @@ data_eeg <- read_dta(path)
 withoutNA <- !is.na(data_eeg$absalpha)
 data_eeg <- data_eeg[withoutNA,]
 
-# helper functions (from Andrews code)
-mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
-standardize <- function(a) (a - mean(a))/(2*sd(a))
+# load some helper functions for preprocessing, plotting
+source("helper_functions.R")
 
 # create multiverse
 # 1. different pre_score definitions
