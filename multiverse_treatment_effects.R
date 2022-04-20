@@ -1,6 +1,6 @@
 # load packages 
 if(!requireNamespace("pacman"))install.packages("pacman")
-pacman::p_load(here, haven, tictoc, knitr, tidyverse, tidybayes, rstanarm, bayesplot, cowplot, loo, purrr, multiverse)
+pacman::p_load(here, haven, tictoc, knitr, tidyverse, tidybayes, brms, bayesplot, cowplot, loo, purrr, multiverse)
 
 # load data 
 path <- here::here("Data", "159422-V2", "pnas_povreductioneeg.dta")
@@ -52,34 +52,23 @@ inside(M, {
   # 2. contrasts as alternative outcome 
   # 3. include different variables: treat, pre_score, girl 
   # 4. normal vs. log-normal model 
-  mod <- stan_glm(branch(outcome, 
-                         "abs" ~ absalpha 
-                         #,"log" ~ log(absalpha), 
-                         #"contrast" ~ log(absalpha) + log(absgamma) - log(abstheta)
-                         ) ~ 
-                    branch(predictors, 
-                           "eq_1" ~ treat,
-                           "eq_2" ~ treat + pre_score,
-                           "eq_3" ~ treat + pre_score + girl,
-                           "eq_4" ~ treat + girl + birthweight + gestage + 
-                             momedu + income + white + black + momhealth + 
-                             smoking + drinking),
-                  family = 
-                    branch(obs_model, 
-                           "normal" ~ gaussian(link = "identity")
-                           ),
-                  data=df, 
-                  refresh=0)
-  
-  # posterior results 
-  postarray <- as.array(mod)
-  # matrix of draws from the posterior pred. distribution
-  yrep <- posterior_predict(mod, draws = 1000)
-  # posterior results for alpha
-  posterior_mean_outcome <- mean(as.array(mod))
-  # posterior treatment effect: point estimate & std. error
-  posterior_mean_treat <- mod$coefficients["treat"]
-  posterior_sd_treat <- mod$ses["treat"]
+  mod <- brm(formula = 
+               branch(outcome,
+                      "abs" ~ absalpha
+                      #,"contrast" ~ log(absalpha) + log(absgamma) - log(abstheta)
+                      ) ~ 
+               branch(predictors, 
+                      "eq_1" ~ treat,
+                      "eq_2" ~ treat + pre_score,
+                      "eq_3" ~ treat + pre_score + girl,
+                      "eq_4" ~ treat + girl + birthweight + gestage + 
+                        momedu + income + white + black + momhealth + 
+                        smoking + drinking),
+             data = df, 
+             family = 
+               branch(obs_model, 
+                      "normal" ~ gaussian(), 
+                      "lognormal" ~ lognormal()))
   
 })
 
@@ -93,14 +82,10 @@ toc()
 
 # access results 
 multiverse_table <- multiverse::expand(M) %>% 
-  extract_variables(mod, 
-                    postarray, 
-                    posterior_mean_outcome, 
-                    posterior_mean_treat, 
-                    posterior_sd_treat,
-                    yrep)
+  extract_variables(mod)
 
 # save results 
+saveRDS(multiverse_table, "multiverse-ex1.rds")
 
 # inspect posterior treatment effect sizes
 d <- multiverse_table %>%
@@ -164,3 +149,18 @@ plot_post <- function(postarray, printit = FALSE, prob_val = 0.8, prob_outer_val
 # example plot 
 ex_post <- d$postarray[[10]]
 plot_post(ex_post, printit = TRUE)
+
+# plot all posterior distr for treat
+
+# add grouping: simple, medium, complex model 
+
+plot_all_treat <- function(postarray, printit = FALSE){}
+
+# compare all models to 
+# 1. model average 
+# 2. encompassing model
+
+# instead of log(outcome) - use log_normal()
+# models are not nested anymore BUT target is on same scale 
+
+# focus on log_normal model as normal model is probably not true
