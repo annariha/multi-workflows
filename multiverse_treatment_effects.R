@@ -87,19 +87,13 @@ multiverse_table <- multiverse::expand(M) %>%
 # save results 
 saveRDS(multiverse_table, "multiverse-ex1.rds")
 
-# inspect posterior treatment effect sizes
+# access list of brmsfits (mod)
 d <- multiverse_table %>%
-  select(pre_score_calculation, 
-         outcome, 
-         predictors, 
-         obs_model,
-         mod,
-         postarray,
-         posterior_mean_treat, 
-         posterior_sd_treat, 
-         posterior_mean_outcome,
-         yrep) %>%
-  arrange(outcome)
+  select(pre_score_calculation, predictors, obs_model, mod) %>%
+  arrange(predictors)
+
+# plot all posterior results from list of models 
+do.call(compare_posteriors, fits_list)
 
 # vector of obs. outcome values alpha
 y_alpha <- as.vector(data_eeg$absalpha)
