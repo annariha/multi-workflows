@@ -14,10 +14,9 @@ data_eeg <- data_eeg[withoutNA,]
 source("helper_functions.R")
 
 # create multiverse
-# 1. different pre_score definitions
-# 2. contrasts as outcome 
-# 3. include different variables
-# 4. normal model vs. log-normal model
+# 1. pre_score definition
+# 2. include different variables
+# 3. normal model vs. log-normal model
 
 M = multiverse()
 
@@ -43,10 +42,11 @@ inside(M, {
     mutate(pre_score = branch(pre_score_calculation,
                     "pre_score1" ~ standardize(birthweight) + standardize(gestage) + 
                       standardize(momedu) + standardize(income) + white - black + 
-                      standardize(momhealth) - standardize(smoking) - standardize(drinking),
-                    "pre_score2" ~ standardize(momedu) + standardize(income) + white - black,
-                    "pre_score3" ~ standardize(birthweight) + standardize(gestage) + 
-                      standardize(momhealth) - standardize(smoking) - standardize(drinking)))
+                      standardize(momhealth) - standardize(smoking) - standardize(drinking)
+                    #,"pre_score2" ~ standardize(momedu) + standardize(income) + white - black
+                    #,"pre_score3" ~ standardize(birthweight) + standardize(gestage) + 
+                      #standardize(momhealth) - standardize(smoking) - standardize(drinking)
+                    ))
   
   # 2. contrasts as alternative outcome 
   # 3. include different variables: treat, pre_score, girl 
@@ -59,16 +59,19 @@ inside(M, {
                branch(predictors, 
                       "eq_1" ~ treat,
                       "eq_2" ~ treat + pre_score,
-                      "eq_3" ~ treat + pre_score + girl,
-                      "eq_4" ~ treat + girl + birthweight + gestage + 
-                        momedu + income + white + black + momhealth + 
-                        smoking + drinking),
+                      "eq_3" ~ treat + pre_score + girl
+                      #,"eq_4" ~ treat + girl + birthweight + gestage + 
+                        #momedu + income + white + black + momhealth + 
+                        #smoking + drinking
+                      ),
              data = df, 
              family = 
                branch(obs_model, 
                       "normal" ~ gaussian(), 
                       "lognormal" ~ lognormal()))
   
+  loo_results <- loo(mod)
+
 })
 
 # check multiverse settings
@@ -81,18 +84,19 @@ toc()
 
 # access results 
 multiverse_table <- multiverse::expand(M) %>% 
-  extract_variables(mod)
+  extract_variables(mod, loo_results)
 
 # save results 
 saveRDS(multiverse_table, "multiverse-ex1.rds")
 
 # access list of brmsfits (mod)
 d <- multiverse_table %>%
-  select(pre_score_calculation, predictors, obs_model, mod) %>%
+  select(pre_score_calculation, predictors, obs_model, mod, loo_results) %>%
   arrange(predictors)
 
 # plot all posterior results from list of models 
-do.call(compare_posteriors, fits_list)
+do.call(compare_posteriors, d$mod)
+ggsave("post_plot.png")
 
 # vector of obs. outcome values alpha
 y_alpha <- as.vector(data_eeg$absalpha)
