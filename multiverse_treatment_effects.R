@@ -18,6 +18,10 @@ source("helper_functions.R")
 # 2. include different variables
 # 3. normal model vs. log-normal model
 
+# lognormal() instead of log(outcome)
+# models are not nested anymore BUT target var is on same scale 
+# focus on log-normal model as normal model is probably not true
+
 M = multiverse()
 
 inside(M, {
@@ -48,9 +52,8 @@ inside(M, {
                       #standardize(momhealth) - standardize(smoking) - standardize(drinking)
                     ))
   
-  # 2. contrasts as alternative outcome 
-  # 3. include different variables: treat, pre_score, girl 
-  # 4. normal vs. log-normal model 
+  # 2. include different variables: treat, pre_score, girl 
+  # 3. normal vs. log-normal model 
   mod <- brm(formula = 
                branch(outcome,
                       "abs" ~ absalpha
@@ -69,7 +72,7 @@ inside(M, {
                branch(obs_model, 
                       "normal" ~ gaussian(), 
                       "lognormal" ~ lognormal()))
-  
+  # evaluate with loo-package
   loo_results <- loo(mod)
 
 })
@@ -89,7 +92,7 @@ multiverse_table <- multiverse::expand(M) %>%
 # save results 
 saveRDS(multiverse_table, "multiverse-ex1.rds")
 
-# access list of brmsfits (mod)
+# access list of brms-fits (mod) and loo results
 d <- multiverse_table %>%
   select(pre_score_calculation, predictors, obs_model, mod, loo_results) %>%
   arrange(predictors)
@@ -98,66 +101,15 @@ d <- multiverse_table %>%
 do.call(compare_posteriors, d$mod)
 ggsave("post_plot.png")
 
+# compare with loo 
+do.call(loo_compare, d$loo_results)
+# but which model is which? 
+
 # vector of obs. outcome values alpha
 y_alpha <- as.vector(data_eeg$absalpha)
 
-# posterior predictive checks
-plot_post <- function(postarray, printit = FALSE, prob_val = 0.8, prob_outer_val = 0.99){
-  
-  color_scheme_set("green")
-  
-  plot1 <- mcmc_intervals(postarray, prob = prob_val, prob_outer = prob_outer_val)
-  plot2 <- mcmc_areas(postarray, pars = c("treat"), prob = prob_val, prob_outer = prob_outer_val)
-  
-  # add the title
-  title <- ggdraw() + 
-    draw_label(
-      "Posterior distributions with median and 80% credible intervals",
-      x = 0,
-      hjust = 0,
-      fontfamily = "serif",
-      size = 11,
-    ) +
-    theme(
-      # add margin on the left of the drawing canvas,
-      # so title is aligned with left edge of first plot
-      plot.margin = margin(0, 0, 0, 4)
-    )
-  
-  plot_row  <- plot_grid(plot1, plot2,
-                         ncol = 1, align = "hv", 
-                         labels = "AUTO",
-                         label_fontfamily = "serif",
-                         label_size = 12,
-                         label_x = 0, label_y = 0, # to put labels on the bottom
-                         hjust = -0.5, vjust = -0.5) # to put labels on the bottom
-  
-  post_pred_plot <- plot_grid(title, plot_row, ncol = 1,  rel_heights = c(0.1, 1))
-  
-  # option to print & save or only save
-  if (printit == TRUE) {
-    ggsave("post_pred_plot.png")
-    return(post_pred_plot)
-    }else{
-    ggsave("post_pred_plot.png")
-    }
-}
-
-# example plot 
-ex_post <- d$postarray[[10]]
-plot_post(ex_post, printit = TRUE)
-
-# plot all posterior distr for treat
-
 # add grouping: simple, medium, complex model 
-
-plot_all_treat <- function(postarray, printit = FALSE){}
 
 # compare all models to 
 # 1. model average 
 # 2. encompassing model
-
-# instead of log(outcome) - use log_normal()
-# models are not nested anymore BUT target is on same scale 
-
-# focus on log_normal model as normal model is probably not true
