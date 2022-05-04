@@ -30,6 +30,6 @@ compare_posteriors <- function(..., dodge_width = 0.5) {
   ggplot(combined, aes(x = m, y = parameter, color = model, group = model)) +
     geom_linerange(aes(xmin = l, xmax = h), size = 2, position = position_dodge(dodge_width)) +
     geom_linerange(aes(xmin = ll, xmax = hh), position = position_dodge(dodge_width)) +
-    geom_point(color = "black", position = position_dodge(dodge_width)) +
+    geom_point(color = "black", position = position_dodge(dodge_width), size = 0.8) +
     geom_vline(xintercept = 0, linetype = "dashed")
 }
