@@ -72,6 +72,10 @@ inside(M, {
                branch(obs_model, 
                       "normal" ~ gaussian(), 
                       "lognormal" ~ lognormal()))
+  
+  # check convergence diagnostics: n_eff, Rhat 
+  neffs_mod <- neff_ratio(mod)
+  rhats_mod <- rhat(mod)
   # evaluate with loo-package
   loo_results <- loo(mod)
 
@@ -87,23 +91,54 @@ toc()
 
 # access results 
 multiverse_table <- multiverse::expand(M) %>% 
-  extract_variables(mod, loo_results)
+  extract_variables(mod, neffs_mod, rhats_mod, loo_results)
 
 # save results 
 saveRDS(multiverse_table, "multiverse-ex1.rds")
 
 # access list of brms-fits (mod) and loo results
 d <- multiverse_table %>%
-  select(pre_score_calculation, predictors, obs_model, mod, loo_results) %>%
+  select(.universe, 
+         pre_score_calculation, 
+         predictors, 
+         obs_model, 
+         mod, 
+         neffs_mod, 
+         rhats_mod, 
+         loo_results) %>%
   arrange(predictors)
+
+# check convergence diagnostics 
+d$neffs_mod
+# Is effective sample size >0.5?
+# effective sample size: 
+# estimate of # of independent draws from the posterior distribution of the estimand of interest
+
+d$rhats_mod
+# Are they close to 1?
+test <- unlist(d$rhats_mod)
 
 # plot all posterior results from list of models 
 do.call(compare_posteriors, d$mod)
 ggsave("post_plot.png")
 
-# compare with loo 
-do.call(loo_compare, d$loo_results)
-# but which model is which? 
+# plot in two facets: one for normal, one for lognormal 
+do.call(compare_posteriors, d$mod) + 
+  facet_grid(rows = NULL, cols = vars(model %in% c(1,3,5)), scales = "free")
+
+d_ln_mod <- d %>%
+  filter(obs_model == "lognormal")
+
+do.call(compare_posteriors, d_ln_mod$mod)
+ggsave("post_plot_lnmod.png")
+
+# Next step: build in facet option into plot-function! 
+# exclude intercept 
+# put intercept in extra plot 
+
+# compare models using loo-cv 
+names(d$loo_results) <- paste("Model", seq_along(1:NROW(d))) # add names to identify models in loo-output 
+loo_compare(d$loo_results)
 
 # vector of obs. outcome values alpha
 y_alpha <- as.vector(data_eeg$absalpha)
