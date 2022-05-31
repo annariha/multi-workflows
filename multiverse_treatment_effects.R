@@ -1,3 +1,5 @@
+#! /usr/bin/Rscript --vanilla
+
 # load packages 
 if(!requireNamespace("pacman"))install.packages("pacman")
 pacman::p_load(here, haven, tictoc, knitr, tidyverse, tidybayes, brms, bayesplot, cowplot, loo, purrr, multiverse)
@@ -62,20 +64,23 @@ inside(M, {
                branch(predictors, 
                       "eq_1" ~ treat,
                       "eq_2" ~ treat + pre_score,
-                      "eq_3" ~ treat + pre_score + girl
-                      #,"eq_4" ~ treat + girl + birthweight + gestage + 
-                        #momedu + income + white + black + momhealth + 
-                        #smoking + drinking
+                      "eq_3" ~ treat + pre_score + girl,
+                      "eq_4" ~ treat + girl + birthweight + gestage + 
+                      momedu + income + white + black + momhealth + 
+                      smoking + drinking
                       ),
              data = df, 
              family = 
                branch(obs_model, 
                       "normal" ~ gaussian(), 
-                      "lognormal" ~ lognormal()))
+                      "lognormal" ~ lognormal()),
+             chains = 2, cores = 2)
   
   # check convergence diagnostics: n_eff, Rhat 
   neffs_mod <- neff_ratio(mod)
   rhats_mod <- rhat(mod)
+  # get y_rep
+  y_rep <- 
   # evaluate with loo-package
   loo_results <- loo(mod)
 
@@ -89,10 +94,15 @@ tic()
 execute_multiverse(M)
 toc()
 
-# access results 
-multiverse_table <- multiverse::expand(M) %>% 
-  extract_variables(mod, neffs_mod, rhats_mod, loo_results)
+# access results (extract_variables() works only for vectors -> vctrs::list_sizes() error)
+multiverse_table_old <- multiverse::expand(M) %>% 
+  extract_variables(neffs_mod, rhats_mod) 
 
+multiverse <- expand(M)
+
+multiverse_table <- multiverse %>% 
+  extract_vars_df(mod, neffs_mod, rhats_mod, loo_results) 
+  
 # save results 
 saveRDS(multiverse_table, "multiverse-ex1.rds")
 
@@ -118,31 +128,58 @@ d$rhats_mod
 # Are they close to 1?
 test <- unlist(d$rhats_mod)
 
+###################################
+#### comparing posterior plots ####
+###################################
+
 # plot all posterior results from list of models 
-do.call(compare_posteriors, d$mod)
+do.call(compare_posteriors, list(d$mod, dropvars = c("(Intercept)")))
 ggsave("post_plot.png")
 
 # plot in two facets: one for normal, one for lognormal 
-do.call(compare_posteriors, d$mod) + 
-  facet_grid(rows = NULL, cols = vars(model %in% c(1,3,5)), scales = "free")
+to_mods <- as_labeller(c(`TRUE` = "normal", `FALSE` = "lognormal"))
+do.call(compare_posteriors, list(d$mod, dropvars = c("(Intercept)"))) + 
+  facet_grid(rows = NULL, vars(model %in% c(1,3,5,7)), 
+             scales = "free",
+             labeller = to_mods)
 
-d_ln_mod <- d %>%
-  filter(obs_model == "lognormal")
+ggsave("post_plot_mods.png")
 
-do.call(compare_posteriors, d_ln_mod$mod)
-ggsave("post_plot_lnmod.png")
+# get vector of all names despite "treat"
+param_names <-
+  map(d$mod, posterior::variables) %>% 
+  unlist() %>% 
+  unique() %>%
+  stringr::str_remove(., "b_")
 
-# Next step: build in facet option into plot-function! 
-# exclude intercept 
-# put intercept in extra plot 
+drop_vec <- param_names[! param_names %in% c("treat")]
+
+to_mods <- as_labeller(c(`TRUE` = "normal", `FALSE` = "lognormal"))
+do.call(compare_posteriors, list(d$mod, dropvars = c(drop_vec, "(Intercept)"))) + 
+  facet_grid(rows = NULL, vars(model %in% c(1,3,5,7)), 
+             scales = "free",
+             labeller = to_mods)
+
+ggsave("post_plot_mods2.png")
 
 # compare models using loo-cv 
 names(d$loo_results) <- paste("Model", seq_along(1:NROW(d))) # add names to identify models in loo-output 
 loo_compare(d$loo_results)
 
+# If-statements
+# e.g. if range of Intercept a lot larger than range of other vars - exclude intercept from plot
+# e.g. drop normal model if misspecified
+
+###################################
+#### PPC Plots ####################
+###################################
+
+# ppc_dens_overlay()
+
 # vector of obs. outcome values alpha
 y_alpha <- as.vector(data_eeg$absalpha)
 
+###################################
 # add grouping: simple, medium, complex model 
 
 # compare all models to 
