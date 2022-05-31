@@ -2,6 +2,17 @@
 mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
 standardize <- function(a) (a - mean(a))/(2*sd(a))
 
+# adjust extract_variables from multiverse to work with other objects 
+extract_vars_df <- function (x, ..., .results = .results){
+  .results <- enquo(.results)
+  mutate(x, extracted = lapply(!!.results, multiverse:::extract_from_env, ...)) %>%
+    # added the below code instead of using unnest_wider()
+    # from https://stackoverflow.com/questions/49689927/unnest-a-list-column-directly-into-several-columns
+    mutate(r = map(extracted, ~ data.frame(t(.)))) %>%
+    unnest(r) %>%
+    select(-extracted)
+}
+
 # compare posteriors of several models visually
 # code adapted from https://stackoverflow.com/questions/52875665/plotting-posterior-parameter-estimates-from-multiple-models-with-bayesplot
 # new: input can be one, more or a list of fit-objects, option to exclude vars from plot
