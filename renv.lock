@@ -222,10 +222,10 @@
     },
     "berryFunctions": {
       "Package": "berryFunctions",
-      "Version": "1.21.2",
+      "Version": "1.21.14",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "bd7802abe0bbd3fb9b89e683540cbd2d",
+      "Hash": "b75acb1d08ed8dc2ee143eb235fb374e",
       "Requirements": [
         "abind"
       ]
@@ -313,6 +313,7 @@
         "nleqslv",
         "nlme",
         "posterior",
+        "rstan",
         "rstantools",
         "shinystan"
       ]
@@ -737,15 +738,26 @@
     },
     "future": {
       "Package": "future",
-      "Version": "1.25.0",
+      "Version": "1.26.1",
       "Source": "Repository",
       "Repository": "CRAN",
-      "Hash": "877024e372cf61e41f5d13eafd8d4bac",
+      "Hash": "cd20396d5395828de2e12d60467f6a53",
       "Requirements": [
         "digest",
         "globals",
         "listenv",
         "parallelly"
+      ]
+    },
+    "future.apply": {
+      "Package": "future.apply",
+      "Version": "1.9.0",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "8ec2bd333ccd4df6bf70e68dded6c364",
+      "Requirements": [
+        "future",
+        "globals"
       ]
     },
     "gargle": {
@@ -1053,6 +1065,14 @@
       "Hash": "19b10fb768a7646b600a7ade3f8cade6",
       "Requirements": []
     },
+    "inline": {
+      "Package": "inline",
+      "Version": "0.3.19",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "1deaf1de3eac7e1d3377954b3a283652",
+      "Requirements": []
+    },
     "isoband": {
       "Package": "isoband",
       "Version": "0.2.5",
@@ -1296,10 +1316,15 @@
     },
     "multiverse": {
       "Package": "multiverse",
-      "Version": "0.5.0",
-      "Source": "Repository",
-      "Repository": "CRAN",
-      "Hash": "c32a531ff4b68f73be9f830cbac68d0f",
+      "Version": "0.6.0",
+      "Source": "GitHub",
+      "RemoteType": "github",
+      "RemoteHost": "api.github.com",
+      "RemoteRepo": "multiverse",
+      "RemoteUsername": "mucollective",
+      "RemoteRef": "HEAD",
+      "RemoteSha": "9610bd438b6224111f5666e56f0c869fea3d7e77",
+      "Hash": "61f550e1e339d81114e03b99a9c2a3d6",
       "Requirements": [
         "R6",
         "berryFunctions",
@@ -1307,6 +1332,7 @@
         "dplyr",
         "evaluate",
         "formatR",
+        "future.apply",
         "knitr",
         "magrittr",
         "purrr",
@@ -1415,6 +1441,23 @@
         "rlang",
         "utf8",
         "vctrs"
+      ]
+    },
+    "pkgbuild": {
+      "Package": "pkgbuild",
+      "Version": "1.3.1",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "66d2adfed274daf81ccfe77d974c3b9b",
+      "Requirements": [
+        "R6",
+        "callr",
+        "cli",
+        "crayon",
+        "desc",
+        "prettyunits",
+        "rprojroot",
+        "withr"
       ]
     },
     "pkgconfig": {
@@ -1693,6 +1736,25 @@
       "Hash": "1de7ab598047a87bba48434ba35d497d",
       "Requirements": []
     },
+    "rstan": {
+      "Package": "rstan",
+      "Version": "2.21.5",
+      "Source": "Repository",
+      "Repository": "CRAN",
+      "Hash": "61f94b51fc49feea6637bb09e7ac81f3",
+      "Requirements": [
+        "BH",
+        "Rcpp",
+        "RcppEigen",
+        "RcppParallel",
+        "StanHeaders",
+        "ggplot2",
+        "gridExtra",
+        "inline",
+        "loo",
+        "pkgbuild"
+      ]
+    },
     "rstanarm": {
       "Package": "rstanarm",
       "Version": "2.21.3",
@@ -1711,6 +1773,7 @@
         "lme4",
         "loo",
         "nlme",
+        "rstan",
         "rstantools",
         "shinystan",
         "survival"
@@ -1851,6 +1914,7 @@
         "gtools",
         "markdown",
         "reshape2",
+        "rstan",
         "shiny",
         "shinyjs",
         "shinythemes",
