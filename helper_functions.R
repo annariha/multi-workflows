@@ -7,7 +7,7 @@ extract_vars_df <- function (x, ..., .results = .results){
   .results <- enquo(.results)
   mutate(x, extracted = lapply(!!.results, multiverse:::extract_from_env, ...)) %>%
     # added the below code instead of using unnest_wider()
-    # from https://stackoverflow.com/questions/49689927/unnest-a-list-column-directly-into-several-columns
+    # adapted from https://stackoverflow.com/questions/49689927/unnest-a-list-column-directly-into-several-columns
     mutate(r = map(extracted, ~ data.frame(t(.)))) %>%
     unnest(r) %>%
     select(-extracted)
@@ -37,8 +37,8 @@ compare_posteriors <- function(x, ... , dropvars = c(), dodge_width = 0.5) {
     } else if (class(x)[1] == "brmsfit") {
       brm_draws <- posterior::subset_draws(posterior::as_draws(x$fit),
                                            variable = paste0("b_", rownames(fixef(x))))
-      posterior::variables(brm_draws) <- stringr::str_split(posterior::variables(brm_draws), "_", simplify = T)[, 2]
-      posterior::rename_variables(brm_draws, `(Intercept)` = Intercept)
+      posterior::variables(brm_draws) <- stringr::str_remove(posterior::variables(brm_draws), "b_")
+      posterior::rename_variables(brm_draws, `(Intercept)` = Intercept) # if this line is commented out -> bayesplot error
     } else {
       stop(paste0(class(x)[1], " objects not supported."))
     }
