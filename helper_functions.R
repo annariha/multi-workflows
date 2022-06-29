@@ -48,11 +48,11 @@ check_bulkess <- function(modelfit){
   out <- bulkess[bulkess < 100 * nc] 
 }
 
-evaluate_multiverse <- function(multiverse, mod, outcome){
+evaluate_multiverse <- function(multi, mod, outcome){
   # to pass column names of multiverse object without quotation marks
   mod <- deparse(substitute(mod))
   # evaluate and extract 
-  m_dict <- multiverse %>%
+  m_dict <- multi %>%
     mutate(rhats = purrr::map(multi[[mod]], brms::rhat), 
            flagrhats = purrr::map(purrr::map(multi[[mod]], brms::rhat), check_rhats),
            flag_rhats = purrr::map_dbl(flagrhats, length), 
@@ -71,7 +71,7 @@ evaluate_multiverse <- function(multiverse, mod, outcome){
            dist_ws = purrr::map(mean_yrep, wasserstein1d, a = outcome) %>% unlist(), # this line needs data
            # loo 
            results_loo = purrr::map(multi[[mod]], loo),
-           flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(loo_results, "diagnostics"), "pareto_k"), ~sum(.x > 0.7)),
+           flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(results_loo, "diagnostics"), "pareto_k"), ~sum(.x > 0.7)),
            elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 1),
            se_elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 4),
            p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 2),
