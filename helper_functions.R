@@ -72,6 +72,7 @@ evaluate_multiverse <- function(multi, mod, outcome){
            # loo 
            results_loo = purrr::map(multi[[mod]], loo),
            flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(results_loo, "diagnostics"), "pareto_k"), ~sum(.x > 0.7)),
+           nvars = purrr::map(multi[[mod]], brms::nvariables),
            elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 1),
            se_elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 4),
            p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 2),
