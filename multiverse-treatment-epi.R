@@ -1,14 +1,18 @@
 #! /usr/bin/Rscript --vanilla
-library(multiverse)
-library(dplyr)
-library(rlang)
-library(brms); library(Matrix); library(tidyverse) # This order is important: https://github.com/tidyverse/dbplyr/issues/779
-library(tidybayes)
-library(transport)
-library(tictoc)
-library(priorsense)
 
-# data from brms-vignettes & https://cran.r-project.org/web/packages/bayesian/vignettes/GetStarted.html
+# load packages 
+if(!requireNamespace("pacman"))install.packages("pacman")
+pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse, tidybayes, transport, bayesplot, cowplot, loo, multiverse, priorsense)
+
+# set seed
+set.seed(42424242)
+
+# set # of cores 
+nc <- detectCores() - 1
+
+# data from brms:
+# https://cran.r-project.org/web/packages/bayesian/vignettes/GetStarted.html
+# https://paul-buerkner.github.io/brms/reference/epilepsy.html
 dat <- brms::epilepsy
 
 # initialize multiverse 
@@ -44,8 +48,7 @@ inside(M_epi, {
                           "negbinom" ~ negbinomial()
                           ),
                  data = dat, 
-                 chains = 2, 
-                 cores = 2,
+                 cores = nc,
                  save_pars = save_pars(all = TRUE))
 })
 
@@ -61,17 +64,17 @@ toc()
 
 source("helper_functions.R")
 
-multi <- M_epi %>% 
+multi_epi <- M_epi %>% 
   multiverse::expand() %>% 
   extract_vars_df(mod_epi)
 
 ################################################################################
 # add metrics 
 tic()
-multi_dict <- evaluate_multiverse(multi, mod_epi , outcome = dat$count)
+multi_dict_epi <- evaluate_multiverse(multi_epi, mod_epi, outcome = dat$count)
 toc()
 
-write_rds(multi_dict, here::here("results", "multi_dict.rds"))
+write_rds(multi_dict_epi, here::here("results", "multi_dict_epi.rds"))
 ################################################################################
 # (not yet in function): tail ESS
 tailess <- purrr::map_dbl(multi$mod_epi, posterior::ess_tail)
