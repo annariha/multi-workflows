@@ -31,7 +31,7 @@ M_eeg = multiverse()
 tic()
 inside(M_eeg, {
   
-  # preprocessing (from Andrews code)
+  # preprocessing (from Andrew Gelman's example on blog)
   df <- data_eeg %>%
     mutate(
       girl = as.numeric(cfemalea0),
