@@ -75,7 +75,9 @@ multi_dict_epi <- evaluate_multiverse(multi_epi, mod_epi, outcome = dat$count)
 toc()
 
 write_rds(multi_dict_epi, here::here("results", "multi_dict_epi.rds"))
+
 ################################################################################
+
 # (not yet in function): tail ESS
 tailess <- purrr::map_dbl(multi$mod_epi, posterior::ess_tail)
 
@@ -112,14 +114,22 @@ count_ps <- purrr::map(purrr::map(ps_params, ~filter(.x, diagnosis != "-")), cou
 ################################################################################
 # quantitative ppc - divergences/distances between data distribution and model 
 
-# only first row 
-wasserstein1d(dat$count, multi$y_rep[[1]][1])
-
 # get wasserstein distances between data sample and average posterior sample 
 # needs to vectors of same dimension -> use average posterior cdf 
 dist_ws <- purrr::map(mean_yrep, wasserstein1d, a = dat$count) %>% unlist()
 
 # What is "high" distance i.e. model needs to be investigated? Wasserstein dist alone is not helpful! 
+
+# test density estimates 
+yrep = purrr::map(multi_epi$mod_epi, posterior_predict)
+
+dens_est_model = purrr::map(multi_epi$mod_epi, bayestestR::estimate_density)
+dens_est_yrep = purrr::map(purrr::map(yrep, bayestestR::estimate_density, method = "KernSmooth"), "y")
+dens_est_dat = bayestestR::estimate_density(dat$count, method = "KernSmooth")$y
+matrices1 = purrr::map(dens_est_yrep, rbind, dens_est_dat)
+matrices2 = as.matrix(rev(as.matrix(t(matrices1[[1]]))))
+
+# make sure that all vectors sum up to 1.0 to use philentropy::KL()
 
 # "cjs_dist" Cumulative Jensen-Shannon distance
 # "hellinger_dist": Hellinger distance.
