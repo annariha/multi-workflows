@@ -31,8 +31,6 @@ inside(M_epi, {
     mutate(Age_n =(dat$Age - mean(dat$Age)) / sd(dat$Age), 
            Base_n = (dat$Base - mean(dat$Base)) / sd(dat$Base))
   
-  # log_Age_c + log_Base4_c * Trt_c + (1 | patient) + (1 | visit) + (1 | obs)
-  
   # fit model with default settings
   mod_epi <- brm(count ~ 
                    branch(formula,
@@ -57,6 +55,7 @@ M_epi %>% execute_multiverse()
 toc()
 
 # access results
+
 # M %>% multiverse::expand() %>% multiverse::extract_variables(mod_epi)
 # Error in `list_sizes()`:
 # ! `x$mod_epi` must be a vector, not a <brmsfit> object.
@@ -122,7 +121,6 @@ dist_ws <- purrr::map(mean_yrep, wasserstein1d, a = dat$count) %>% unlist()
 
 # test density estimates 
 yrep = purrr::map(multi_epi$mod_epi, posterior_predict)
-
 dens_est_model = purrr::map(multi_epi$mod_epi, bayestestR::estimate_density)
 dens_est_yrep = purrr::map(purrr::map(yrep, bayestestR::estimate_density, method = "KernSmooth"), "y")
 dens_est_dat = bayestestR::estimate_density(dat$count, method = "KernSmooth")$y
