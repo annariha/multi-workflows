@@ -2,13 +2,13 @@
 
 # load packages 
 if(!requireNamespace("pacman"))install.packages("pacman")
-pacman::p_load(here, haven, tictoc, knitr, tidyverse, tidybayes, brms, bayesplot, cowplot, loo, purrr, multiverse)
+pacman::p_load(here, parallel, haven, tictoc, knitr, tidyverse, tidybayes, brms, bayesplot, cowplot, loo, purrr, multiverse)
 
 # set seed
 set.seed(42424242)
 
 # set # of cores 
-nc <- detectCores() - 1
+nc <- parallel::detectCores() - 1
 
 # load data 
 path <- here::here("data", "pnas_povreductioneeg.dta")
