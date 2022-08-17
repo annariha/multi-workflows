@@ -65,10 +65,12 @@ evaluate_multiverse <- function(multi, mod, outcome){
            ps_df_params = purrr::map(purrr::map(multi[[mod]], priorsense::powerscale_sensitivity), "sensitivity"),
            ps_params = purrr::map(ps_df_params, ~filter(.x, diagnosis != "-")),
            pdc = purrr::map(purrr::map(ps_df_params, ~filter(.x, diagnosis == "prior-data conflict")), count) %>% unlist(),
-           # PPC
+           # PPC, needs models + data
            yrep = purrr::map(multi[[mod]], posterior_predict),
            mean_yrep = purrr::map(yrep, colMeans),
-           dist_ws = purrr::map(mean_yrep, wasserstein1d, a = outcome) %>% unlist(), # this line needs data
+           dist_ws = purrr::map(mean_yrep, wasserstein1d, a = outcome) %>% unlist(),
+           #dist_kl = ,
+           #div_kl = purrr::map( , philentropy::KL),
            # loo 
            results_loo = purrr::map(multi[[mod]], loo),
            flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(results_loo, "diagnostics"), "pareto_k"), ~sum(.x > 0.7)),
@@ -90,6 +92,28 @@ evaluate_multiverse <- function(multi, mod, outcome){
               results_loo))
   out <- m_dict
 }
+
+# stacking weights 
+
+compare_stacking_weights <- function(multi, mod){
+  # to pass column names of multiverse object without quotation marks
+  mod <- deparse(substitute(mod))
+  # loo 
+  results_loo = purrr::map(multi[[mod]], loo)
+  flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(results_loo, "diagnostics"), "pareto_k"), ~sum(.x > 0.7))
+  # get lpd points 
+  lpd_pts_list = purrr::map(results_loo, "pointwise")
+  lpd_pts_list_elpd = purrr::map(lpd_pts_list, ~ .x[,1] %>% cbind()) 
+  lpd_pts = as.matrix(do.call("cbind", lpd_pts_list_elpd))   
+  # stacking weights 
+  st_wts = stacking_weights(lpd_pts)
+  out <- st_wts
+}
+
+#lpd_pts_liste = purrr::map(purrr::map(test_liste, "pointwise"), ~ .x[,1])
+#lpd_pts_list <- listi %>% map(., ~ .x[,1] %>% cbind())
+#each list is one column 
+#lpd_pts <- do.call("cbind",lpd_pts_liste) 
 
 # compare posteriors of several models visually
 # code adapted from https://stackoverflow.com/questions/52875665/plotting-posterior-parameter-estimates-from-multiple-models-with-bayesplot
