@@ -78,7 +78,9 @@ evaluate_multiverse <- function(multi, mod, outcome){
            elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 1),
            se_elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 4),
            p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 2),
-           se_p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 5)) %>%
+           se_p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 5), 
+           # stacking weights 
+           st_wts = stacking_weights(as.matrix(do.call("cbind", purrr::map(purrr::map(results_loo, "pointwise"), ~ .x[,1] %>% cbind()))))) %>%
     select(!c(.parameter_assignment, 
               .code, 
               .results, 
@@ -103,7 +105,7 @@ compare_stacking_weights <- function(multi, mod){
   flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(results_loo, "diagnostics"), "pareto_k"), ~sum(.x > 0.7))
   # get lpd points 
   lpd_pts_list = purrr::map(results_loo, "pointwise")
-  lpd_pts_list_elpd = purrr::map(lpd_pts_list, ~ .x[,1] %>% cbind()) 
+  lpd_pts_list_elpd = purrr::map(lpd_pts_list, ~ .x[,1]) 
   lpd_pts = as.matrix(do.call("cbind", lpd_pts_list_elpd))   
   # stacking weights 
   st_wts = stacking_weights(lpd_pts)
