@@ -34,12 +34,15 @@ inside(M_epi, {
   # fit model with default settings
   mod_epi <- brm(count ~ 
                    branch(formula,
-                          "eq1" ~ Trt + Base_n + Age_n + (1 | patient) + (1 | visit) + (1 | obs),
-                          "eq2" ~ Trt + Base_n + Age_n + (1 | patient) + (1 | visit), 
-                          "eq3" ~ Trt + Base_n + Age_n + (1 | patient), 
-                          "eq4" ~ Trt + Base_n + Age_n,
-                          "eq5" ~ Trt + Base_n,
-                          "eq6" ~ Trt),
+                          "eq1" ~ Trt,
+                          "eq2" ~ Trt + Base_n, 
+                          "eq3" ~ Trt + Age_n,
+                          "eq4" ~ Trt + Base_n + Age_n, 
+                          "eq5" ~ Trt + Base_n + (1 | patient), 
+                          "eq6" ~ Trt + Age_n + (1 | patient),
+                          "eq7" ~ Trt + Base_n + Age_n + (1 | patient),
+                          "eq8" ~ Trt + Base_n + Age_n + (1 | patient) + (1 | visit),
+                          "eq9" ~ Trt + Base_n + Age_n + (1 | patient) + (1 | visit) + (1 | obs)),
                  family = 
                    branch(family, 
                           "poisson" ~ poisson(),
@@ -67,16 +70,25 @@ multi_epi <- M_epi %>%
   multiverse::expand() %>% 
   extract_vars_df(mod_epi)
 
-################################################################################
+write_rds(multi_epi, here::here("results", "multiverse_epi.rds"))
+
 # add metrics 
 tic()
-multi_dict_epi <- evaluate_multiverse(multi_epi, mod_epi, outcome = dat$count)
+multi_dict_epi <- evaluate_multiverse(multi = multi_epi, mod = mod_epi, outcome = dat$count)
 toc()
 
 write_rds(multi_dict_epi, here::here("results", "multi_dict_epi.rds"))
 
 ################################################################################
+# filter according to stacking weights == 0 
+selected_universes <- multi_dict_epi %>% 
+  filter(st_wts > 0.0001) %>%
+  select(.universe)
 
+# update stacking weights 
+multi_epi %>% filter(.universe %in% selected_universes)
+multi_dict_epi %>% mutate(st_wts_new = )
+################################################################################
 # (not yet in function): tail ESS
 tailess <- purrr::map_dbl(multi$mod_epi, posterior::ess_tail)
 
