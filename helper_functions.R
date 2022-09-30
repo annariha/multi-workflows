@@ -78,7 +78,15 @@ evaluate_multiverse <- function(multi, mod, outcome){
            elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 1),
            se_elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 4),
            p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 2),
-           se_p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 5), 
+           se_p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 5),
+           # waics = 
+           # lpd_points = as.matrix(do.call("cbind", purrr::map(purrr::map(results_loo, "pointwise"), ~ .x[,1] %>% cbind()))),
+           # waic weights 
+           # waic_wts <- exp(waics) / sum(exp(waics)),
+           # pseudo-bma weights 
+           pbma_wts = pseudobma_weights(as.matrix(do.call("cbind", purrr::map(purrr::map(results_loo, "pointwise"), ~ .x[,1] %>% cbind()))), BB=FALSE),
+           # pseudo-bma weights with bayesian bootstrap 
+           pbma_BB_wts = pseudobma_weights(as.matrix(do.call("cbind", purrr::map(purrr::map(results_loo, "pointwise"), ~ .x[,1] %>% cbind())))), # default is BB=TRUE
            # stacking weights 
            st_wts = stacking_weights(as.matrix(do.call("cbind", purrr::map(purrr::map(results_loo, "pointwise"), ~ .x[,1] %>% cbind()))))) %>%
     select(!c(.parameter_assignment, 
@@ -158,11 +166,17 @@ compare_posteriors <- function(x, ... , dropvars = c(), dodge_width = 0.5) {
   combined <- combined %>%
        filter(!parameter %in% dropvars)
   
+  # create suitable color palette
+  colourCount = length(unique(combined$model))
+  getPalette = colorRampPalette(brewer.pal(8, "Dark2"))
+  
   # plot
   ggplot(combined, aes(x = m, y = parameter, color = model, group = model)) +
     geom_linerange(aes(xmin = l, xmax = h), size = 2, position = position_dodge(dodge_width)) +
     geom_linerange(aes(xmin = ll, xmax = hh), position = position_dodge(dodge_width)) +
     geom_point(color = "black", position = position_dodge(dodge_width), size = 0.8) +
-    geom_vline(xintercept = 0, linetype = "dashed")
+    geom_vline(xintercept = 0, linetype = "dashed") +
+    scale_color_manual(values = getPalette(colourCount)) +
+    theme_bw()
 }
 
