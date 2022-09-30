@@ -141,19 +141,3 @@ save_plot(here::here("figures", "post_treat_eeg.png"),
           posterior_plot_grouped, 
           base_height = 5, 
           base_aspect_ratio = 1.4)
-
-# compare models using loo-cv 
-names(d$loo_results) <- paste("Model", seq_along(1:NROW(d))) # add names to identify models in loo-output 
-loo_compare(d$loo_results)
-
-# ppc_dens_overlay()
-
-# vector of obs. outcome values alpha
-y_alpha <- as.vector(data_eeg$absalpha)
-
-# Next: 
-# 1. customize plots 
-# e.g. if range of Intercept > range of other vars -> exclude Int from plot
-# e.g. drop misspecified models for plotting 
-# 2. add grouping: simple, medium, complex model 
-# 3. compare all models to (1) model average and (2) encompassing model (if existent)

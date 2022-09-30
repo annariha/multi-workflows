@@ -2,7 +2,10 @@
 
 # load packages 
 if(!requireNamespace("pacman"))install.packages("pacman")
-pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse, tidybayes, transport, bayesplot, cowplot, loo, multiverse, priorsense)
+
+pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse, 
+               tidybayes, transport, bayesplot, cowplot, RColorBrewer,
+               loo, multiverse, priorsense)
 
 # set seed
 set.seed(42424242)
@@ -80,117 +83,38 @@ toc()
 write_rds(multi_dict_epi, here::here("results", "multi_dict_epi.rds"))
 
 ################################################################################
-# filter according to stacking weights == 0 
-selected_universes <- multi_dict_epi %>% 
-  filter(st_wts > 0.0001) %>%
-  select(.universe)
 
-# update stacking weights 
-multi_epi %>% filter(.universe %in% selected_universes)
-multi_dict_epi %>% mutate(st_wts_new = )
-################################################################################
-# (not yet in function): tail ESS
-tailess <- purrr::map_dbl(multi$mod_epi, posterior::ess_tail)
+# get vector of all names despite "treat"
+param_names <-
+  map(multi_epi$mod_epi, posterior::variables) %>% 
+  unlist() %>% 
+  unique() %>%
+  stringr::str_remove(., "b_")
+param_names[2] <- "treat"
 
-# Why is tail ESS = NA? 
-# from help: "If any of the draws is non-finite, that is, NA, NaN, Inf, 
-# or -Inf, the returned output will be (numeric) NA. Also, if all draws within 
-# any of the chains of a variable are the same (constant), the returned 
-# output will be (numeric) NA as well."
+# only plot treatment effect
+drop_vec <- param_names[! param_names %in% c("treat")]
 
-################################################################################
-# prior sensitivity 
+# ungrouped 
+posterior_plot_ungrouped <- do.call(
+  compare_posteriors, 
+  list(multi_epi$mod_epi, dropvars = c(drop_vec, "(Intercept)")))
 
-# get prior sensitivity of model parameters for each model
-priorsense_params <- purrr::map(multi$mod_epi, priorsense::powerscale_sensitivity)
+save_plot(here::here("figures", "post_treat_epi_all.png"), 
+          posterior_plot_ungrouped, 
+          base_height = 5, 
+          base_aspect_ratio = 1.4)
 
-# unpack priorsense object
-ps_params <- purrr::map(purrr::map(multi$mod_epi, priorsense::powerscale_sensitivity), "sensitivity")
+# grouped 
+to_mods <- as_labeller(c(`TRUE` = "poisson", `FALSE` = "negbinom"))
+posterior_plot_treat <- do.call(compare_posteriors, 
+  list(multi_epi$mod_epi, dropvars = c(drop_vec, "(Intercept)"))) + 
+  facet_grid(rows = NULL, 
+             vars(model %in% c(1,3,5,7,9,11,13,15,17)), 
+             scales = "free", 
+             labeller = to_mods)
 
-# all vars (and info) for which diagnosis != "-"
-pdc_params <- purrr::map(ps_params, ~filter(.x, diagnosis != "-"))
-
-# count vars with diagnosis == "prior-data conflict"
-count_pdc <- purrr::map(purrr::map(ps_params, ~filter(.x, diagnosis == "prior-data conflict")), count) %>% unlist()
-
-# count vars with diagnosis != "-" 
-count_ps <- purrr::map(purrr::map(ps_params, ~filter(.x, diagnosis != "-")), count) %>% unlist()
-
-# What is class 'powerscaling_data' class? -> prediction = ...
-################################################################################
-# y_rep, mean_yrep 
-# add posterior draws to data
-# dat_yrep <- dat %>%
-# add_predicted_draws(mod_epi)
-################################################################################
-# quantitative ppc - divergences/distances between data distribution and model 
-
-# get wasserstein distances between data sample and average posterior sample 
-# needs to vectors of same dimension -> use average posterior cdf 
-dist_ws <- purrr::map(mean_yrep, wasserstein1d, a = dat$count) %>% unlist()
-
-# What is "high" distance i.e. model needs to be investigated? Wasserstein dist alone is not helpful! 
-
-# test density estimates 
-yrep = purrr::map(multi_epi$mod_epi, posterior_predict)
-dens_est_model = purrr::map(multi_epi$mod_epi, bayestestR::estimate_density)
-dens_est_yrep = purrr::map(purrr::map(yrep, bayestestR::estimate_density, method = "KernSmooth"), "y")
-dens_est_dat = bayestestR::estimate_density(dat$count, method = "KernSmooth")$y
-matrices1 = purrr::map(dens_est_yrep, rbind, dens_est_dat)
-matrices2 = as.matrix(rev(as.matrix(t(matrices1[[1]]))))
-
-# make sure that all vectors sum up to 1.0 to use philentropy::KL()
-
-# "cjs_dist" Cumulative Jensen-Shannon distance
-# "hellinger_dist": Hellinger distance.
-# "kl_div": KL divergence
-
-################################################################################
-loo_results <- purrr::map(multi$mod_epi, loo)
-
-# loo: always use "moment_match = TRUE"? 
-# This takes ages!
-tic()
-loo_results_mm <- purrr::map(multi$mod_epi, loo, moment_match = TRUE)
-toc()
-
-elpd_loo <- purrr::map(purrr::map(loo_results, "estimates"), 1) # extract 1st element - this is "Estimate" for elpd_loo
-se_elpd_loo <- purrr::map(purrr::map(loo_results, "estimates"), 4) # extract 4th element - this is "SE" for elpd_loo
-
-# pareto k should be < 0.7 - "good", "ok", "bad", "very bad"
-# count "bad"+"very bad" 
-pareto_ks <- purrr::map(purrr::map(loo_results, "diagnostics"), "pareto_k")
-flag_pareto_ks <- purrr::map_dbl(purrr::map(purrr::map(loo_results, "diagnostics"), "pareto_k"), ~sum(.x > 0.7))
-
-################################################################################
-# https://stackoverflow.com/questions/61297357/how-can-i-use-purrr-to-extract-an-attribute-in-a-deeply-nested-list-column-in-r
-################################################################################
-
-# Teemu's paper
-# posterior distribution - data distribution 
-# uniformity check
-
-# if ... > ... check ppc plots 
-bayesplot::pp_check(multi$mod_epi[[1]])
-bayesplot::pp_check(multi$mod_epi[[2]])
-
-fit <- multi$mod_epi[[1]]
-pp_check(fit)  # shows dens_overlay plot by default
-# pp_check(fit, type = "error_hist", ndraws = 11)
-pp_check(fit, type = "scatter_avg", ndraws = 100)
-pp_check(fit, type = "stat_2d")
-pp_check(fit, type = "rootogram")
-pp_check(fit, type = "loo_pit_qq")
-
-# with y and y_rep 
-# -> bayesplot tools 
-bayesplot::ppc_ecdf_overlay(dat$count, multi$y_rep[[1]])
-bayesplot::ppc_ecdf_overlay(dat$count, multi$y_rep[[2]])
-
-y_dats <- multi$dat_yrep[[1]]$count
-yreps <- multi$y_rep[[1]]
-
-# brms
-#prior_epi_brms <- c(set_prior("normal(0,5)", class = "b"),
-#                    set_prior("normal(0,10)", class = "Intercept"),
-#                    set_prior("cauchy(0,5)", class = "sd"))
+save_plot(here::here("figures", "post_treat_epi.png"), 
+          posterior_plot_treat, 
+          base_height = 5, 
+          base_aspect_ratio = 1.4)
