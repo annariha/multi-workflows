@@ -91,6 +91,8 @@ multi_eeg <- M_eeg %>%
   multiverse::expand() %>% 
   extract_vars_df(mod_eeg)
 
+write_rds(multi_eeg, here::here("results", "multiverse_eeg.rds"))
+
 # evaluate 
 tic()
 multi_dict_eeg <- evaluate_multiverse(multi_eeg, mod_eeg, outcome = data_eeg$absalpha)
@@ -106,36 +108,39 @@ write_rds(multi_dict_eeg, here::here("results", "multi_dict_eeg.rds"))
 
 ################################################################################
 
-source("helper_functions.R")
-
-# plot all posterior results from list of models (excluding intercept)
-posterior_plot_all <- do.call(compare_posteriors, list(multi_eeg$mod_eeg, dropvars = c("(Intercept)")))
-save_plot("post_plot.png", posterior_plot_all, base_height = 5, base_aspect_ratio = 1.4)
-
-# plot all posterior results in two facets: one for normal, one for lognormal 
-to_mods <- as_labeller(c(`TRUE` = "normal", `FALSE` = "lognormal"))
-posterior_plot <- do.call(compare_posteriors, list(multi_eeg$mod_eeg, dropvars = c("(Intercept)"))) + 
-  facet_grid(rows = NULL, vars(model %in% c(1,3,5,7,9,11,13,15)), 
-             scales = "free",
-             labeller = to_mods)
-
-save_plot("post_plot_mods.png", posterior_plot, base_height = 5, base_aspect_ratio = 1.4)
-
 # get vector of all names despite "treat"
 param_names <-
   map(multi_eeg$mod_eeg, posterior::variables) %>% 
   unlist() %>% 
   unique() %>%
   stringr::str_remove(., "b_")
+
 # only plot treatment effect
 drop_vec <- param_names[! param_names %in% c("treat")]
+
+# ungrouped 
+posterior_plot_ungrouped <- do.call(
+  compare_posteriors, 
+  list(multi_eeg$mod_eeg, dropvars = c(drop_vec, "(Intercept)")))
+
+save_plot(here::here("figures", "post_treat_eeg_all.png"), 
+          posterior_plot_ungrouped, 
+          base_height = 5, 
+          base_aspect_ratio = 1.4)
+
+# grouped 
 to_mods <- as_labeller(c(`TRUE` = "normal", `FALSE` = "lognormal"))
-posterior_plot2 <- do.call(compare_posteriors, list(multi_eeg$mod_eeg, dropvars = c(drop_vec, "(Intercept)"))) + 
+posterior_plot_grouped <- do.call(
+  compare_posteriors, 
+  list(multi_eeg$mod_eeg, dropvars = c(drop_vec, "(Intercept)"))) + 
   facet_grid(rows = NULL, vars(model %in% c(1,3,5,7,9,11,13,15)), 
              scales = "free",
              labeller = to_mods)
 
-save_plot(here::here("figures", "post_plot_mods2.png"), posterior_plot2, base_height = 5, base_aspect_ratio = 1.4)
+save_plot(here::here("figures", "post_treat_eeg.png"), 
+          posterior_plot_grouped, 
+          base_height = 5, 
+          base_aspect_ratio = 1.4)
 
 # compare models using loo-cv 
 names(d$loo_results) <- paste("Model", seq_along(1:NROW(d))) # add names to identify models in loo-output 
