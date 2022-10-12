@@ -2,6 +2,8 @@
 mean_impute <- function(a) ifelse(is.na(a), mean(a[!is.na(a)]), a)
 standardize <- function(a) (a - mean(a))/(2*sd(a))
 
+################################################################################
+
 # adjust extract_variables from multiverse to work with other objects 
 extract_vars_df <- function (x, ..., .results = .results){
   .results <- enquo(.results)
@@ -12,6 +14,8 @@ extract_vars_df <- function (x, ..., .results = .results){
     unnest(r) %>%
     select(-extracted)
 }
+
+################################################################################
 
 # extract convergence diagnostics
 check_rhats <- function(named_vec){
@@ -103,30 +107,15 @@ evaluate_multiverse <- function(multi, mod, outcome){
   out <- m_dict
 }
 
-# stacking weights 
-
-compare_stacking_weights <- function(multi, mod){
-  # to pass column names of multiverse object without quotation marks
-  mod <- deparse(substitute(mod))
-  # loo 
-  results_loo = purrr::map(multi[[mod]], loo)
-  flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(results_loo, "diagnostics"), "pareto_k"), ~sum(.x > 0.7))
-  # get lpd points 
-  lpd_pts_list = purrr::map(results_loo, "pointwise")
-  lpd_pts_list_elpd = purrr::map(lpd_pts_list, ~ .x[,1]) 
-  lpd_pts = as.matrix(do.call("cbind", lpd_pts_list_elpd))   
-  # stacking weights 
-  st_wts = stacking_weights(lpd_pts)
-  out <- st_wts
-}
-
 #lpd_pts_liste = purrr::map(purrr::map(test_liste, "pointwise"), ~ .x[,1])
 #lpd_pts_list <- listi %>% map(., ~ .x[,1] %>% cbind())
 #each list is one column 
 #lpd_pts <- do.call("cbind",lpd_pts_liste) 
 
+################################################################################
 # compare posteriors of several models visually
-# code adapted from https://stackoverflow.com/questions/52875665/plotting-posterior-parameter-estimates-from-multiple-models-with-bayesplot
+
+# the below code is adapted from https://stackoverflow.com/questions/52875665/plotting-posterior-parameter-estimates-from-multiple-models-with-bayesplot
 # new: input can be one, more or a list of fit-objects, option to exclude vars from plot
 
 compare_posteriors <- function(x, ... , dropvars = c(), dodge_width = 0.5) {
@@ -177,6 +166,26 @@ compare_posteriors <- function(x, ... , dropvars = c(), dodge_width = 0.5) {
     geom_point(color = "black", position = position_dodge(dodge_width), size = 0.8) +
     geom_vline(xintercept = 0, linetype = "dashed") +
     scale_color_manual(values = getPalette(colourCount)) +
-    theme_bw()
+    theme_set(theme_bw()) +
+    theme(axis.title.x=element_blank())
+    #theme(legend.box = "horizontal", legend.position = "bottom") +
+    #guides(group = guide_legend(direction='horizontal'))
 }
 
+################################################################################
+# stacking weights 
+
+compare_stacking_weights <- function(multi, mod){
+  # to pass column names of multiverse object without quotation marks
+  mod <- deparse(substitute(mod))
+  # loo 
+  results_loo = purrr::map(multi[[mod]], loo)
+  flag_pareto_ks = purrr::map_dbl(purrr::map(purrr::map(results_loo, "diagnostics"), "pareto_k"), ~sum(.x > 0.7))
+  # get lpd points 
+  lpd_pts_list = purrr::map(results_loo, "pointwise")
+  lpd_pts_list_elpd = purrr::map(lpd_pts_list, ~ .x[,1]) 
+  lpd_pts = as.matrix(do.call("cbind", lpd_pts_list_elpd))   
+  # stacking weights 
+  st_wts = stacking_weights(lpd_pts)
+  out <- st_wts
+}
