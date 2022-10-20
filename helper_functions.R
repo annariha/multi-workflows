@@ -45,9 +45,21 @@ extract_div_trans <- function(df){
 # corresponds to having a rank-normalized effective sample size of at least 400. 
 # In early workflow, ESS > 20 is often sufficient." 
 
-check_bulkess <- function(modelfit){
+# check whether for any parameter bulk ESS too small 
+check_bulkess_fixed <- function(modelfit){
   nc <- nchains(modelfit)
-  bulkess <- posterior::ess_bulk(modelfit)
+  # get model summary 
+  ms <- summary(modelfit)
+  bulkess <- ms$fixed$Bulk_ESS
+  # flag if bulk ESS < 100 * number of chains
+  out <- bulkess[bulkess < 100 * nc] 
+}
+
+check_bulkess_specpars <- function(modelfit){
+  nc <- nchains(modelfit)
+  # get model summary 
+  ms <- summary(modelfit)
+  bulkess <- ms$spec_pars$Bulk_ESS
   # flag if bulk ESS < 100 * number of chains
   out <- bulkess[bulkess < 100 * nc] 
 }
@@ -62,9 +74,12 @@ evaluate_multiverse <- function(multi, mod, outcome){
            flag_rhats = purrr::map_dbl(flagrhats, length), 
            neffs = purrr::map(multi[[mod]], brms::neff_ratio),
            divtrans = purrr::map_dbl(purrr::map(multi[[mod]], brms::nuts_params), extract_div_trans),
-           bulkess = purrr::map_dbl(multi[[mod]], posterior::ess_bulk),
-           flagbulkess = purrr::map(multi[[mod]], check_bulkess),
-           flag_bulkess = if_else(purrr::map_dbl(multi[[mod]], posterior::ess_bulk) < 100 * 4, "too low", "ok"),
+           ms = purrr::map(multi[[mod]], summary), # get model summary
+           bulkess = purrr::map(purrr::map(ms, "spec_pars"), "Bulk_ESS"),
+           bulkess_posterior = purrr::map_dbl(multi[[mod]], posterior::ess_bulk),
+           flagbulkess_fixed = purrr::map(multi[[mod]], check_bulkess_fixed),
+           flagbulkess_specpars = purrr::map(multi[[mod]], check_bulkess_specpars),
+           # flag_bulkess = if_else(purrr::map_dbl(multi[[mod]], posterior::ess_bulk) < 100 * 4, "too low", "ok"),
            # priorsense
            ps_df_params = purrr::map(purrr::map(multi[[mod]], priorsense::powerscale_sensitivity), "sensitivity"),
            ps_params = purrr::map(ps_df_params, ~filter(.x, diagnosis != "-")),
@@ -83,10 +98,6 @@ evaluate_multiverse <- function(multi, mod, outcome){
            se_elpd_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 4),
            p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 2),
            se_p_loo = purrr::map_dbl(purrr::map(results_loo, "estimates"), 5),
-           # waics = 
-           # lpd_points = as.matrix(do.call("cbind", purrr::map(purrr::map(results_loo, "pointwise"), ~ .x[,1] %>% cbind()))),
-           # waic weights 
-           # waic_wts <- exp(waics) / sum(exp(waics)),
            # pseudo-bma weights 
            pbma_wts = pseudobma_weights(as.matrix(do.call("cbind", purrr::map(purrr::map(results_loo, "pointwise"), ~ .x[,1] %>% cbind()))), BB=FALSE),
            # pseudo-bma weights with bayesian bootstrap 
@@ -98,11 +109,8 @@ evaluate_multiverse <- function(multi, mod, outcome){
               .results, 
               mod, 
               rhats, 
-              neffs, 
               ps_df_params, 
               ps_params, 
-              yrep, 
-              mean_yrep,
               results_loo))
   out <- m_dict
 }
