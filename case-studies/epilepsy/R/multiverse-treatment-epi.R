@@ -97,16 +97,25 @@ multi_epi <- M_epi %>%
 # store results 
 write_rds(multi_epi, here::here("case-studies", "epilepsy", "results", "multiverse_epi.rds"))
 
+# just for testing
 multi_epi <- read_rds(here::here("case-studies", "epilepsy", "results", "multiverse_epi.rds"))
 
 # evaluate models #### 
 
+# this takes long, since recompiling with rstan atm 
 tic()
-multi_dict <- purrr::map_dfr(multi_epi$mod_epi, evaluate_universe)
+multi_dict_epi <- purrr::map_dfr(multi_epi$mod_epi, evaluate_universe)
 toc()
+
+# add additional info for dictionary
+multi_dict_epi <- multi_dict_epi %>% 
+  mutate(model_id = row_number(),
+         family = multi_epi$family,
+         formula = multi_epi$formula) %>% 
+  select(model_id, family, formula, everything())
+
+# store results 
+write_rds(multi_dict_epi, here::here("case-studies", "epilepsy", "results", "multi_dict_epi.rds"))
 
 # old 
 # multi_dict_epi <- evaluate_multiverse(multi = multi_epi, mod = mod_epi, outcome = dat$count)
-
-# store results 
-write_rds(multi_dict_epi, here::here("case-study-epilepsy", "results", "multi_dict_epi.rds"))
