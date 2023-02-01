@@ -73,6 +73,6 @@ evaluate_universe <- function(modelobject, dataset){
     m_dict_loo
   )
   
-  # return one named row vector with all results 
+  # return one named row vector with all results as df to use with map_dfr()
   out <- as.data.frame(m_dict_row)
 }
