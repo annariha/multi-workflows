@@ -79,8 +79,6 @@ toc()
 #"r2d2"~ set_prior(R2D2(mean_R2 = 0.8, prec_R2 = 10))  %when%, 
 #"r2d2m2" ~ %when% ),
 
-# access results
-
 # M %>% multiverse::expand() %>% multiverse::extract_variables(mod_epi)
 # Error in `list_sizes()`:
 # ! `x$mod_epi` must be a vector, not a <brmsfit> object.
