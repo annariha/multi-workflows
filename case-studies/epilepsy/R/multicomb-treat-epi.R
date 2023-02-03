@@ -18,16 +18,35 @@ nc <- detectCores() - 1
 
 # data
 dat <- brms::epilepsy 
+outcome_str <- "count"
 
 # create combinations ####
 
 families <- list(poisson = poisson(), 
                  negbinomial = negbinomial())
 
+priors <- list(brms_default = NULL, 
+               brms_horseshoe = set_prior("horseshoe(3)")
+               #,rstanarm_default = set_prior("", class = "b")
+               )
+
+# get priors from brms model 
+#get_prior(formula, dat)
+
+# intercept
+# coefficients 
+# prior = normal(0, 2.5, autoscale = TRUE)
+# auxiliary vars
+# normal(location = 0, scale = NULL, autoscale = FALSE)
+# student_t(df = 1, location = 0, scale = NULL, autoscale = FALSE)
+
+# set_prior("<prior>", class = "b")
+
 # colnames_epi <- names(dat)
 
 combinations_df <- expand.grid(
   family = names(families),
+  prior = priors,
   # fixed effects 
   Trt = c("", "Trt"), 
   zBase = c("", "zBase"),
@@ -38,22 +57,31 @@ combinations_df <- expand.grid(
   obs = c("", "(1 | obs)")
   )
 
+# add prior names for easier summarising, plotting etc. 
+combinations_df %>% 
+  mutate(priortest = names(combinations_df$prior)
+  )
+
 # add interaction effect in the rows where treatment was left out, (i.e., where Trt == "")
 combinations_df <- combinations_df %>% 
   mutate(zBaseTrt = factor(
     case_when(
       Trt == "Trt" ~ "",
       Trt == "" ~ "zBase * Trt"))) %>% 
-  # reorder to have family and treatment effects first 
-  select(family, Trt, zBaseTrt, everything()) %>% 
   # filter out rows with interaction and zBase
   filter(!(zBaseTrt == "zBase * Trt" & combinations_df$zBase == "zBase"))
 
+combinations_df <- combinations_df %>%
+  # add outcome name 
+  mutate(outcome = rep_len(outcome_str, NROW(combinations_df))) %>%
+  # reorder to have outcome name, family and treatment effects first 
+  select(outcome, family, prior, Trt, zBaseTrt, everything())
+
 # create name for each model ####
-build_name <- function(row){
-  outcome = "count"
+build_name <- function(row, ...){
+  outcome = row[which(names(row) == "outcome")]
   # which cells in the row are not "family" and non-empty?
-  in_id <- c(which(names(row) != "family" & row != ""))
+  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior")) & row != ""))
   # cells that are included in the formula
   covars <- row[in_id]
   # extract levels for formula
@@ -76,12 +104,11 @@ build_name <- function(row){
 # create brms formulas ####
 
 build_brms_formula <- function(row, ...){
+  outcome = row[which(names(row) == "outcome")]
   # turn into brms-formula
   fam = as.character(unlist(row["family"]))
-  # not used: name = as.character(unlist(row["model_name"]))
-  outcome = "count"
   # which cells in the row are not "family", "model_name" and non-empty?
-  in_id <- c(which(names(row) != "family" & names(row) != "model_name" & row != ""))
+  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior", "model_name")) & row != ""))
   # cells that are included in the formula
   covars <- row[in_id]
   # extract levels for formula
@@ -93,13 +120,18 @@ build_brms_formula <- function(row, ...){
   out <- formula 
 } 
 
-# add model name and brms formula for each combination ####
+# create prior for brms ####
+build_prior <- function(row, ...){
+  
+}
 
+# add model name and brms formula for each combination ####
 comb_df <- combinations_df %>% 
   mutate(
     model_name = apply(combinations_df, 1, build_name), 
     formula = apply(combinations_df, 1, build_brms_formula)) 
 
+build_name(combinations_df[1,])
 # compare every column rowwise in df, *1 to turn T/F to 1/0 if value in column different 
 # combn() gives combinations of all rows  
 df <- as.matrix(combinations_df)
@@ -216,7 +248,6 @@ dist_m_eval <- get_dist(full_df, "pbma_weight")
 # combn(nrow(df), 2) has dimensions sum(1:95) here 
 
 # combine edit and eval distances ####
-
 dist_comb <- dist_m_eval + distmatrix 
 
 # cluster based on topology and metric of interest ####
@@ -279,12 +310,12 @@ full_df_clust %>%
 
 # Niko's code 
 
-treatment_sampless = apply(full_df, 1, get_posterior_treat)
-                           
 get_posterior_treat <- function(row){
-  return(posterior_samples(build_fit(row))$b_Trt)
+  return(as_draws(build_fit(row))$b_Trt)
 }
 
+treatment_sampless = apply(comb_df, 1, get_posterior_treat)
+                           
 )
 full_df = cbind(full_df, 
                 model_name=model_names,
