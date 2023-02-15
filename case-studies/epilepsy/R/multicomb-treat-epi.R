@@ -57,11 +57,6 @@ combinations_df <- expand.grid(
   obs = c("", "(1 | obs)")
   )
 
-# add prior names for easier summarising, plotting etc. 
-combinations_df %>% 
-  mutate(priortest = names(combinations_df$prior)
-  )
-
 # add interaction effect in the rows where treatment was left out, (i.e., where Trt == "")
 combinations_df <- combinations_df %>% 
   mutate(zBaseTrt = factor(
@@ -74,14 +69,21 @@ combinations_df <- combinations_df %>%
 combinations_df <- combinations_df %>%
   # add outcome name 
   mutate(outcome = rep_len(outcome_str, NROW(combinations_df))) %>%
+  mutate(priors = names(combinations_df$prior)) %>%
   # reorder to have outcome name, family and treatment effects first 
-  select(outcome, family, prior, Trt, zBaseTrt, everything())
+  select(outcome, family, priors, prior, Trt, zBaseTrt, everything())
+
+# add prior names for easier summarising, plotting etc. 
+combinations_df <- combinations_df %>% 
+  mutate(priors = names(combinations_df$prior))
 
 # create name for each model ####
 build_name <- function(row, ...){
-  outcome = row[which(names(row) == "outcome")]
+  outcome = row[["outcome"]]
+  # prior names
+  priornames = row[["priors"]]
   # which cells in the row are not "family" and non-empty?
-  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior")) & row != ""))
+  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior", "priors")) & row != ""))
   # cells that are included in the formula
   covars <- row[in_id]
   # extract levels for formula
@@ -89,26 +91,16 @@ build_name <- function(row, ...){
   # paste formula
   formula1 = paste(outcome, "~", paste(covars, collapse = "+")) 
   # build name
-  name = paste0(row[["family"]], "(", formula1, ")")
+  name = paste0(row[["family"]], "(", formula1, "), ", priornames)
   out <- name
 }
 
-# for testing
-# row <- combinations_df[100,]
-# name <- build_name(row)
-
-# add model name 
-#combinations_df <- combinations_df %>% 
-#  mutate(model_name = apply(combinations_df, 1, build_name)) 
-
 # create brms formulas ####
-
 build_brms_formula <- function(row, ...){
-  outcome = row[which(names(row) == "outcome")]
-  # turn into brms-formula
+  outcome = row[["outcome"]]
   fam = as.character(unlist(row["family"]))
   # which cells in the row are not "family", "model_name" and non-empty?
-  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior", "model_name")) & row != ""))
+  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior", "priors", "model_name")) & row != ""))
   # cells that are included in the formula
   covars <- row[in_id]
   # extract levels for formula
@@ -120,26 +112,20 @@ build_brms_formula <- function(row, ...){
   out <- formula 
 } 
 
-# create prior for brms ####
-build_prior <- function(row, ...){
-  
-}
-
 # add model name and brms formula for each combination ####
 comb_df <- combinations_df %>% 
   mutate(
     model_name = apply(combinations_df, 1, build_name), 
     formula = apply(combinations_df, 1, build_brms_formula)) 
 
-build_name(combinations_df[1,])
-# compare every column rowwise in df, *1 to turn T/F to 1/0 if value in column different 
+# compare every column rowwise in df ####
+# *1 to turn T/F to 1/0 if value in column different 
 # combn() gives combinations of all rows  
-df <- as.matrix(combinations_df)
+df <- as.matrix(combinations_df  %>% select(!prior))
 compare <- t(combn(nrow(df), 2, FUN = function(x) df[x[1],]!=df[x[2],])) * 1
 vals <- rowSums(compare)
 
 # create distance matrix with zero on diagonal ####
-
 distmatrix <- diag(x = 0, nrow = NROW(combinations_df), ncol = NROW(combinations_df))
 rownames(distmatrix) <- rownames(combinations_df)
 colnames(distmatrix) <- rownames(combinations_df)
@@ -150,29 +136,28 @@ distmatrix[upper.tri(distmatrix)] <- t(distmatrix)[upper.tri(distmatrix)]
 #forceSymmetric(distmatrix)
 
 # cluster based on topology ####
-
 hc_edit <- as.dendrogram(hclust(as.dist(distmatrix))) 
 hc_edit_dendro <- dendro_data(hc_edit) 
 
 # add model names as labels
-dict <- setNames(comb_df$model_name, 1:96)
+dict <- setNames(paste0(comb_df$model_name,", ", comb_df$priors), 1:192)
 hc_edit_dendro$labels$label <- sapply(hc_edit_dendro$labels$label, function(x) dict[[as.character(x)]])
 
 # plot dendrogram with edit distances ####
-
-dendrogram_plot_edit <- ggdendrogram(hc_edit_dendro, rotate = TRUE) 
+dendrogram_plot_edit <- ggdendrogram(hc_edit_dendro, rotate = TRUE)  
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "dendrogram_edit_epi.png"), 
           dendrogram_plot_edit, 
-          base_height = 14, 
+          base_height = 19, 
           base_aspect_ratio = 1.5)
 
 # fit model for each combination ####
 
 build_fit <- function(row, ...){
   brm(
-    build_brms_formula(row), 
+    formula=build_brms_formula(row), 
     data=epilepsy, 
+    prior=row[["prior"]],
     file=digest::digest(build_name(row), algo="md5"),
     backend="cmdstanr", silent=2, refresh=0
   ) 
@@ -205,11 +190,14 @@ tic()
 loos = apply(combinations_df, 1, build_loo)
 toc()
 
-# compare models 
+# compare models with loo & model averaging weights ####
 comparison_df = loo::loo_compare(loos)
-# extract pseudo BMA weights
+# extract pseudo-BMA weights
 pbma_weights = loo_model_weights(loos, method="pseudobma")
 pbma_df = data.frame(pbma_weight=as.numeric(pbma_weights), row.names=names(pbma_weights))
+# extract stacking weights
+stack_weights = loo_model_weights(loos, method="stacking")
+stack_df = data.frame(stack_weight=as.numeric(stack_weights), row.names=names(stack_weights))
 # add loo comparison table 
 full_df = merge(combinations_df, comparison_df, by=0)
 # set row names to model names
@@ -222,9 +210,59 @@ full_df = merge(full_df, pbma_df, by=0)
 rownames(full_df) <- full_df$Row.names
 # select everything despite Row.names
 full_df = full_df[2:length(full_df)]
+# merge stacking weights 
+full_df = merge(full_df, stack_df, by=0)
+# set row names to model names (again) 
+rownames(full_df) <- full_df$Row.names
+# select everything despite Row.names
+full_df = full_df[2:length(full_df)]
 
+# visual inspection
+pbma_df %>% 
+  arrange(pbma_weight) %>%
+  mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>% 
+  ggplot(aes(x = pbma_weight, y = models)) + 
+  geom_point()
+
+stack_df %>% 
+  arrange(stack_weight) %>%
+  mutate(models = forcats::fct_inorder(rownames(stack_df))) %>% 
+  ggplot(aes(x = stack_weight, y = models)) + 
+  geom_point()
+
+# add posterior results for treatment ####
+get_posterior_treat <- function(row){
+  modelfit = build_fit(row)
+  draws_df = posterior::as_draws_df(modelfit)
+  draws_trt = draws_df$b_Trt1
+  return(draws_trt)
+}
+
+spread_draws(mod, b_Trt1)
+
+treatment_sampless = apply(combinations_df, 1, get_posterior_treat)
+
+test_fit <- build_fit(combinations_df[1,])
+
+full_df = cbind(full_df, 
+                model_name=model_names,
+                treatment_mean=as.numeric(lapply(treatment_sampless, mean)),
+                treatment_se=as.numeric(lapply(treatment_sampless, sd)),
+                treatment_q05=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.05, names=FALSE))),
+                treatment_q25=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.25, names=FALSE))),
+                treatment_q75=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.75, names=FALSE))),
+                treatment_q95=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.95, names=FALSE)))
+)
+# sensitivity ####
+
+# What are the "best" models? 
+# For simplicity: models that are well-specified and have highest elpd_loo
+
+# What are the worst models? 
+# depends on axis of comparison
+
+################################################################################
 # get eval distance matrix ####
-
 get_dist <- function(df, col){
   # scale of col
   scale = max(df[,col]) - min(df[,col])
@@ -275,9 +313,21 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "dendrogram_comb_epi
           base_height = 14, 
           base_aspect_ratio = 1.5)
 
-# cut dendrogram so there are 4 clusters
-cluster <- cutree(hc_comb, k = 5)
+# cut dendrogram to get clusters
+cluster <- cutree(hc_comb, k = 6)
 
+df_test <- as.data.frame(cluster)
+
+df_test <- df_test %>% 
+  mutate(modelname = rownames(df_test)) %>%
+  pivot_wider(names_from = cluster, values_from = modelname)
+
+# how many models are in each cluster?
+as.data.frame(cluster) %>%
+  dplyr::group_by(cluster) %>%
+  dplyr::summarise(n = dplyr::n())
+
+# 
 full_df_clust <- full_df %>%
   mutate(model_name = rownames(full_df), 
          model_id = factor(1:NROW(full_df))) %>% 
@@ -298,35 +348,11 @@ full_df_clust %>%
   geom_point(aes(color = cluster)) + 
   theme_bw()
 
-# add posterior results for treatment ####
 
-# sensitivity ####
-
-# What are the "best" models? 
-# For simplicity: models that are well-specified and have highest elpd_loo
-
-# What are the worst models? 
-# depends on axis of comparison
 
 # Niko's code 
 
-get_posterior_treat <- function(row){
-  return(as_draws(build_fit(row))$b_Trt)
-}
 
-treatment_sampless = apply(comb_df, 1, get_posterior_treat)
-                           
-)
-full_df = cbind(full_df, 
-                model_name=model_names,
-                treatment_mean=as.numeric(lapply(treatment_sampless, mean)),
-                treatment_se=as.numeric(lapply(treatment_sampless, sd)),
-                treatment_q05=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.05, names=FALSE))),
-                treatment_q25=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.25, names=FALSE))),
-                treatment_q75=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.75, names=FALSE))),
-                treatment_q95=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.95, names=FALSE)))
-)
-return(full_df)
 
 build_color <- function(row){
   rgb(0., 0., 0., as.numeric(row[["pbma_weight"]]))
