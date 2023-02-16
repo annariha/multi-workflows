@@ -217,18 +217,145 @@ rownames(full_df) <- full_df$Row.names
 # select everything despite Row.names
 full_df = full_df[2:length(full_df)]
 
-# visual inspection
-pbma_df %>% 
+# visual inspection of convergence checks for treatment var ####
+# ...
+
+# visual inspection of pbma weights ####
+
+plot_ordered_pbmaw <- pbma_df %>% 
   arrange(pbma_weight) %>%
   mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>% 
   ggplot(aes(x = pbma_weight, y = models)) + 
-  geom_point()
+  geom_point(shape=21, size=2, fill="white") +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("All models (k=", NROW(pbma_df), ")")) + 
+  theme_bw() + 
+  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
 
-stack_df %>% 
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_pbmaw_epi.png"), 
+          plot_ordered_pbmaw, 
+          base_height = 19, 
+          base_aspect_ratio = 1.5)
+
+# filter out Pseudo-BMA weights close to zero
+# where close to zero means < 1e-5 (?) 
+
+pbma_df %>% arrange(pbma_weight) %>%
+  mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>%
+  filter(pbma_weight >= 1e-05) %>% 
+  count()
+
+epsilon = 1e-05
+plot_filtered_pbmaw <- pbma_df %>% 
+  arrange(pbma_weight) %>%
+  mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>%
+  filter(pbma_weight >= epsilon) %>% 
+  {ggplot(., aes(x = pbma_weight, y = models)) + 
+  geom_point(shape=21, size=2, fill="white") +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+  theme_bw() + 
+  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_pbmaw_epi.png"), 
+          plot_filtered_pbmaw,
+          base_height = 10, 
+          base_aspect_ratio = 1.5)
+
+# visual inspection of stacking weights ####
+
+plot_ordered_stackw <- stack_df %>% 
   arrange(stack_weight) %>%
   mutate(models = forcats::fct_inorder(rownames(stack_df))) %>% 
-  ggplot(aes(x = stack_weight, y = models)) + 
-  geom_point()
+  {ggplot(., aes(x = stack_weight, y = models)) + 
+  geom_point(shape=21, size=2, fill="white") +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("All models (k=", NROW(.), ")")) + 
+  theme_bw() +
+  theme(axis.text.y = element_text(color = "grey20", size = 6, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_stackw_epi.png"), 
+          plot_ordered_stackw, 
+          base_height = 19, 
+          base_aspect_ratio = 1.5)
+
+# filter out stacking weights close to zero
+# where close to zero means < 1e-04 (?) 
+
+plot_filtered_stackw <- stack_df %>% 
+  arrange(stack_weight) %>%
+  mutate(models = forcats::fct_inorder(rownames(stack_df))) %>%
+  filter(stack_weight >= 1e-04) %>% 
+  {ggplot(., aes(x = stack_weight, y = models)) + 
+  geom_point(shape=21, size=2, fill="white") +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+  theme_bw() + 
+  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_epi.png"), 
+          plot_filtered_stackw,
+          base_height = 15, 
+          base_aspect_ratio = 1.5)
+
+# visual inspection of elpd diff + se ####
+plot_all_elpddiff <- full_df %>%
+  arrange(elpd_diff) %>% 
+  mutate(models = forcats::fct_inorder(rownames(full_df))) %>%
+  {ggplot(., aes(x = elpd_diff, y = models)) +
+  geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+  geom_point(shape=21, size=2, fill="white") +
+  ggtitle(paste0("All models (k=", NROW(.), ")")) + 
+  theme_bw()
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_elpddiff_epi.png"), 
+          plot_all_elpddiff,
+          base_height = 15, 
+          base_aspect_ratio = 1.5)
+
+# mean is sensitive to outliers -> is it thus a more "conservative" filter?!
+mean_filter = mean(full_df$elpd_diff)
+
+plot_filter_mean_elpddiff <- full_df %>%
+  arrange(elpd_diff) %>% 
+  mutate(models = forcats::fct_inorder(rownames(full_df))) %>%
+  filter(elpd_diff >= mean_filter) %>%
+  {ggplot(., aes(x = elpd_diff, y = models)) +
+  geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+  geom_point(shape=21, size=2, fill="white") +
+  ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using mean")) + 
+  theme_bw()
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_mean_elpddiff_epi.png"), 
+          plot_filter_mean_elpddiff,
+          base_height = 15, 
+          base_aspect_ratio = 1.5)
+
+median_filter = median(full_df$elpd_diff)
+
+plot_filter_median_elpddiff <- full_df %>%
+  arrange(elpd_diff) %>% 
+  mutate(models = forcats::fct_inorder(rownames(full_df))) %>%
+  filter(elpd_diff >= median_filter) %>%
+  {ggplot(., aes(x = elpd_diff, y = models)) +
+      geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+      geom_point(shape=21, size=2, fill="white") +
+      ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using median")) + 
+      theme_bw()
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_median_elpddiff_epi.png"), 
+          plot_filter_median_elpddiff,
+          base_height = 15, 
+          base_aspect_ratio = 1.5)
+
+# Which models are too similar to be meaningfully distinguished wrt pred. performance? -> se overlaps 0
+# ...
 
 # add posterior results for treatment ####
 get_posterior_treat <- function(row){
