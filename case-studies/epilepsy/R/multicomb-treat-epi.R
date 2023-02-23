@@ -163,18 +163,31 @@ build_fit <- function(row, ...){
   ) 
 }
 
-#test_row <- combinations_df[1,]
-#mod1 <- build_fit(test_row)
+
+# high Rhat for treatment ####
+
+test_row <- combinations_df[1,]
+mod1 <- build_fit(test_row)
+source(here::here("helper-functions.R"))
+source(here::here("case-studies", "epilepsy", "R", "evaluate_universe.R"))
+
+test <- evaluate_universe(mod1, dat) # currently recompiles model with rstan
+
+# high rhat for treatment
+high_rhat_trt = ifelse(TRUE %in% 
+                         str_detect(unlist(check_rhats(brms::rhat(mod1))), regex("b_Trt1", ignore_case = TRUE)),
+                       "yes", "no")
 
 # loo: elpd and model comparison ####
-
 build_loo <- function(row, ...){
   # print(build_name(row))
   file_name = paste0(digest::digest(build_name(row), algo="md5"), "_loo.rds")
   if(file.exists(file_name)){
     return(readRDS(file_name))
   }else{
-    rv = loo(build_fit(row), model_names=c(build_name(row)))
+    rv = loo(build_fit(row), model_names=c(build_name(row))
+             #, moment_match = TRUE
+             )
     saveRDS(rv, file_name)
     return(rv)
   }
@@ -189,6 +202,8 @@ rownames(combinations_df) <- model_names
 tic()
 loos = apply(combinations_df, 1, build_loo)
 toc()
+
+pareto_ks <- sum(pareto_k_values(loos[[1]]) > 0.7)
 
 # compare models with loo & model averaging weights ####
 comparison_df = loo::loo_compare(loos)
@@ -217,6 +232,36 @@ rownames(full_df) <- full_df$Row.names
 # select everything despite Row.names
 full_df = full_df[2:length(full_df)]
 
+# add posterior results for treatment ####
+get_posterior_treat <- function(row){
+  modelfit = build_fit(row)
+  draws_df = posterior::as_draws_df(modelfit)
+  draws_trt = draws_df$b_Trt1
+  return(draws_trt)
+}
+
+get_posterior_treat2 <- function(row){
+  modelfit = build_fit(row)
+  draws_trt = spread_draws(modelfit, b_Trt1)
+  return(draws_trt)
+}
+spread_draws(mod, b_Trt1)
+
+treatment_sampless = apply(combinations_df, 1, get_posterior_treat)
+
+test_row <- 
+test_fit <- build_fit(combinations_df[1,])
+
+full_df = cbind(full_df, 
+                model_name=model_names,
+                treatment_mean=as.numeric(lapply(treatment_sampless, mean)),
+                treatment_se=as.numeric(lapply(treatment_sampless, sd)),
+                treatment_q05=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.05, names=FALSE))),
+                treatment_q25=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.25, names=FALSE))),
+                treatment_q75=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.75, names=FALSE))),
+                treatment_q95=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.95, names=FALSE)))
+)
+
 # visual inspection of convergence checks for treatment var ####
 # ...
 
@@ -226,11 +271,11 @@ plot_ordered_pbmaw <- pbma_df %>%
   arrange(pbma_weight) %>%
   mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>% 
   ggplot(aes(x = pbma_weight, y = models)) + 
-  geom_point(shape=21, size=2, fill="white") +
-  geom_vline(xintercept = 0, linetype="dotted") +
-  ggtitle(paste0("All models (k=", NROW(pbma_df), ")")) + 
-  theme_bw() + 
-  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+      geom_point(shape=21, size=2) +
+      geom_vline(xintercept = 0, linetype="dotted") +
+      ggtitle(paste0("All models (k=", NROW(pbma_df), ")")) + 
+      theme_bw() + 
+      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_pbmaw_epi.png"), 
           plot_ordered_pbmaw, 
@@ -251,11 +296,11 @@ plot_filtered_pbmaw <- pbma_df %>%
   mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>%
   filter(pbma_weight >= epsilon) %>% 
   {ggplot(., aes(x = pbma_weight, y = models)) + 
-  geom_point(shape=21, size=2, fill="white") +
-  geom_vline(xintercept = 0, linetype="dotted") +
-  ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
-  theme_bw() + 
-  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+      geom_point(shape=21, size=2) +
+      geom_vline(xintercept = 0, linetype="dotted") +
+      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+      theme_bw() + 
+      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
   }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_pbmaw_epi.png"), 
@@ -269,11 +314,11 @@ plot_ordered_stackw <- stack_df %>%
   arrange(stack_weight) %>%
   mutate(models = forcats::fct_inorder(rownames(stack_df))) %>% 
   {ggplot(., aes(x = stack_weight, y = models)) + 
-  geom_point(shape=21, size=2, fill="white") +
-  geom_vline(xintercept = 0, linetype="dotted") +
-  ggtitle(paste0("All models (k=", NROW(.), ")")) + 
-  theme_bw() +
-  theme(axis.text.y = element_text(color = "grey20", size = 6, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+      geom_point(shape=21, size=2) +
+      geom_vline(xintercept = 0, linetype="dotted") +
+      ggtitle(paste0("All models (k=", NROW(.), ")")) + 
+      theme_bw() +
+      theme(axis.text.y = element_text(color = "grey20", size = 6, angle = 0, hjust = 1, vjust = 0, face = "plain"))
   }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_stackw_epi.png"), 
@@ -289,11 +334,11 @@ plot_filtered_stackw <- stack_df %>%
   mutate(models = forcats::fct_inorder(rownames(stack_df))) %>%
   filter(stack_weight >= 1e-04) %>% 
   {ggplot(., aes(x = stack_weight, y = models)) + 
-  geom_point(shape=21, size=2, fill="white") +
-  geom_vline(xintercept = 0, linetype="dotted") +
-  ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
-  theme_bw() + 
-  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+      geom_point(shape=21, size=2) +
+      geom_vline(xintercept = 0, linetype="dotted") +
+      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+      theme_bw() + 
+      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
   }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_epi.png"), 
@@ -304,12 +349,13 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_
 # visual inspection of elpd diff + se ####
 plot_all_elpddiff <- full_df %>%
   arrange(elpd_diff) %>% 
-  mutate(models = forcats::fct_inorder(rownames(full_df))) %>%
+  mutate(models = forcats::fct_inorder(rownames(.))) %>%
   {ggplot(., aes(x = elpd_diff, y = models)) +
-  geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
-  geom_point(shape=21, size=2, fill="white") +
-  ggtitle(paste0("All models (k=", NROW(.), ")")) + 
-  theme_bw()
+      geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+      geom_point(shape=21, size=2) +
+      geom_vline(xintercept = 0, linetype="dotted") +
+      ggtitle(paste0("All models (k=", NROW(.), ")")) + 
+      theme_bw()
   }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_elpddiff_epi.png"), 
@@ -322,13 +368,14 @@ mean_filter = mean(full_df$elpd_diff)
 
 plot_filter_mean_elpddiff <- full_df %>%
   arrange(elpd_diff) %>% 
-  mutate(models = forcats::fct_inorder(rownames(full_df))) %>%
+  mutate(models = forcats::fct_inorder(rownames(.))) %>%
   filter(elpd_diff >= mean_filter) %>%
   {ggplot(., aes(x = elpd_diff, y = models)) +
-  geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
-  geom_point(shape=21, size=2, fill="white") +
-  ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using mean")) + 
-  theme_bw()
+      geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+      geom_point(shape=21, size=2) +
+      geom_vline(xintercept = 0, linetype="dotted") +
+      ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using mean")) + 
+      theme_bw()
   }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_mean_elpddiff_epi.png"), 
@@ -340,11 +387,12 @@ median_filter = median(full_df$elpd_diff)
 
 plot_filter_median_elpddiff <- full_df %>%
   arrange(elpd_diff) %>% 
-  mutate(models = forcats::fct_inorder(rownames(full_df))) %>%
+  mutate(models = forcats::fct_inorder(rownames(.))) %>%
   filter(elpd_diff >= median_filter) %>%
   {ggplot(., aes(x = elpd_diff, y = models)) +
       geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
-      geom_point(shape=21, size=2, fill="white") +
+      geom_point(shape=21, size=2) +
+      geom_vline(xintercept = 0, linetype="dotted") +
       ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using median")) + 
       theme_bw()
   }
@@ -357,29 +405,9 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_median_
 # Which models are too similar to be meaningfully distinguished wrt pred. performance? -> se overlaps 0
 # ...
 
-# add posterior results for treatment ####
-get_posterior_treat <- function(row){
-  modelfit = build_fit(row)
-  draws_df = posterior::as_draws_df(modelfit)
-  draws_trt = draws_df$b_Trt1
-  return(draws_trt)
-}
+# get response
+# response <- brms::get_y()
 
-spread_draws(mod, b_Trt1)
-
-treatment_sampless = apply(combinations_df, 1, get_posterior_treat)
-
-test_fit <- build_fit(combinations_df[1,])
-
-full_df = cbind(full_df, 
-                model_name=model_names,
-                treatment_mean=as.numeric(lapply(treatment_sampless, mean)),
-                treatment_se=as.numeric(lapply(treatment_sampless, sd)),
-                treatment_q05=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.05, names=FALSE))),
-                treatment_q25=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.25, names=FALSE))),
-                treatment_q75=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.75, names=FALSE))),
-                treatment_q95=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.95, names=FALSE)))
-)
 # sensitivity ####
 
 # What are the "best" models? 
