@@ -10,6 +10,10 @@ pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse,
 # run once
 # cmdstanr::install_cmdstan()
 
+source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
+source(here::here("case-studies", "epilepsy", "R", "build_brms_formula.R"))
+source(here::here("case-studies", "epilepsy", "R", "get_rhat_trt.R"))
+
 # set seed
 set.seed(42424242)
 
@@ -42,8 +46,6 @@ priors <- list(brms_default = NULL,
 
 # set_prior("<prior>", class = "b")
 
-# colnames_epi <- names(dat)
-
 combinations_df <- expand.grid(
   family = names(families),
   prior = priors,
@@ -58,62 +60,59 @@ combinations_df <- expand.grid(
   )
 
 # add interaction effect in the rows where treatment was left out, (i.e., where Trt == "")
-combinations_df <- combinations_df %>% 
+combinations_df <- combinations_df |> 
   mutate(zBaseTrt = factor(
     case_when(
       Trt == "Trt" ~ "",
-      Trt == "" ~ "zBase * Trt"))) %>% 
+      Trt == "" ~ "zBase * Trt"))) |> 
   # filter out rows with interaction and zBase
   filter(!(zBaseTrt == "zBase * Trt" & combinations_df$zBase == "zBase"))
 
-combinations_df <- combinations_df %>%
+combinations_df <- combinations_df |>
   # add outcome name 
-  mutate(outcome = rep_len(outcome_str, NROW(combinations_df))) %>%
-  mutate(priors = names(combinations_df$prior)) %>%
+  mutate(outcome = rep_len(outcome_str, NROW(combinations_df))) |>
+  mutate(priors = names(combinations_df$prior)) |>
   # reorder to have outcome name, family and treatment effects first 
   select(outcome, family, priors, prior, Trt, zBaseTrt, everything())
 
 # add prior names for easier summarising, plotting etc. 
-combinations_df <- combinations_df %>% 
+combinations_df <- combinations_df |> 
   mutate(priors = names(combinations_df$prior))
 
-# create name for each model ####
-build_name <- function(row, ...){
-  outcome = row[["outcome"]]
-  # prior names
-  priornames = row[["priors"]]
-  # which cells in the row are not "family" and non-empty?
-  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior", "priors")) & row != ""))
-  # cells that are included in the formula
-  covars <- row[in_id]
-  # extract levels for formula
-  covars <- as.character(unlist(covars))
-  # paste formula
-  formula1 = paste(outcome, "~", paste(covars, collapse = "+")) 
-  # build name
-  name = paste0(row[["family"]], "(", formula1, "), ", priornames)
-  out <- name
-}
+# Plots: visualise treatment/control group and visit, patient level info ####
 
-# create brms formulas ####
-build_brms_formula <- function(row, ...){
-  outcome = row[["outcome"]]
-  fam = as.character(unlist(row["family"]))
-  # which cells in the row are not "family", "model_name" and non-empty?
-  in_id <- c(which(!(names(row) %in% c("outcome", "family", "prior", "priors", "model_name")) & row != ""))
-  # cells that are included in the formula
-  covars <- row[in_id]
-  # extract levels for formula
-  covars <- as.character(unlist(covars))
-  # paste formula
-  formula_str = paste(outcome, "~", paste(covars, collapse = "+")) 
-  # turn string into formula 
-  formula = brms::brmsformula(as.formula(formula_str), family=fam)
-  out <- formula 
-} 
+# Why random effect based on visits and patients?
+plot_patient_visit_count <- 
+  dat |> 
+  mutate(treatment = ifelse(Trt == 0, "no treatment", "treatment")) |>
+  ggplot(aes(x = visit, y = count, group = patient, color = patient)) +
+  geom_point() +
+  geom_line() +
+  ylab("seizure count") +
+  theme_bw() + 
+  theme(legend.position = "none") +
+  facet_wrap(~treatment)
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_patient_visit_count_epi.png"), 
+          plot_patient_visit_count)
+
+# Why add an interaction effect? 
+plot_base_count <-
+  dat |> 
+  mutate(treatment = ifelse(Trt == 0, "no treatment", "treatment")) |>
+  ggplot(aes(x = Base)) +
+  geom_point(aes(y = count, color = patient), size=0.8) +
+  scale_x_continuous("base seizure count") +
+  ylab("seizure count") +
+  theme_bw() + 
+  theme(legend.position = "none") +
+  facet_wrap(~treatment)
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_base_count_epi.png"), 
+          plot_base_count)
 
 # add model name and brms formula for each combination ####
-comb_df <- combinations_df %>% 
+comb_df <- combinations_df |> 
   mutate(
     model_name = apply(combinations_df, 1, build_name), 
     formula = apply(combinations_df, 1, build_brms_formula)) 
@@ -121,7 +120,7 @@ comb_df <- combinations_df %>%
 # compare every column rowwise in df ####
 # *1 to turn T/F to 1/0 if value in column different 
 # combn() gives combinations of all rows  
-df <- as.matrix(combinations_df  %>% select(!prior))
+df <- as.matrix(combinations_df  |> select(!prior))
 compare <- t(combn(nrow(df), 2, FUN = function(x) df[x[1],]!=df[x[2],])) * 1
 vals <- rowSums(compare)
 
@@ -163,20 +162,81 @@ build_fit <- function(row, ...){
   ) 
 }
 
-
 # high Rhat for treatment ####
 
 test_row <- combinations_df[1,]
 mod1 <- build_fit(test_row)
-source(here::here("helper-functions.R"))
-source(here::here("case-studies", "epilepsy", "R", "evaluate_universe.R"))
 
-test <- evaluate_universe(mod1, dat) # currently recompiles model with rstan
+# get all modelfits 
+models <- apply(combinations_df, 1, build_fit)
 
-# high rhat for treatment
-high_rhat_trt = ifelse(TRUE %in% 
-                         str_detect(unlist(check_rhats(brms::rhat(mod1))), regex("b_Trt1", ignore_case = TRUE)),
-                       "yes", "no")
+# This gives the same result as using apply(...) 
+models <- combinations_df |>
+  group_nest(row_number()) |>
+  pull(data) |>
+  purrr::map(build_fit)
+
+# all rhats 
+all_rhats <- purrr::map(models, brms::rhat)
+
+# get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
+rhats_trt <- purrr::map(models, get_rhat_trt)
+
+# test
+names(rhats_trt) <- comb_df$model_name
+
+rhat_trt_df <- 
+  tibble(model_name = comb_df$model_name, rhats_raw = rhats_trt) |>
+  unnest(rhats_raw) |>
+  group_by(model_name) |>
+  mutate(key = row_number()) |>
+  spread(key, rhats_raw) |>
+  rename(rhat_Trt = 2, rhat_zBaseTrt = 3) |>
+  # high rhat for treatment
+  mutate(high_rhat_Trt = ifelse(rhat_Trt > 1.01, 1, 0),
+         high_rhat_zBaseTrt = ifelse(rhat_zBaseTrt > 1.01, 1, 0))
+
+# plot Rhats for treatment 
+plot_rhats_trt <- 
+  ggplot(data = rhat_trt_df, aes(rhat_Trt, model_name)) + 
+  geom_point() + 
+  geom_vline(xintercept = 1.01, linetype="dotted") + 
+  ggtitle(paste0("All models (k=", NROW(rhat_trt_df), ")")) + 
+  theme_bw() + 
+  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_rhats_trt_epi.png"), 
+          plot_rhats_trt,
+          base_height = 19, 
+          base_aspect_ratio = 1.5)
+
+plot_filtered_rhats_trt <- rhat_trt_df %>%
+  filter(rhat_Trt < 1.01) %>%
+  {ggplot(., aes(x = rhat_Trt, y = model_name)) + 
+      geom_point() +
+      geom_vline(xintercept = 1.01, linetype="dotted") +
+      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+      theme_bw() + 
+      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_rhats_trt_epi.png"), 
+          plot_filtered_rhats_trt,
+          base_height = 19, 
+          base_aspect_ratio = 1.5)
+
+plot_high_rhats_trt <- rhat_trt_df %>%
+  filter(rhat_Trt > 1.01) %>%
+  {ggplot(., aes(x = rhat_Trt, y = model_name)) + 
+      geom_point() +
+      geom_vline(xintercept = 1.01, linetype="dotted") +
+      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+      theme_bw() + 
+      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  }
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_high_rhats_trt_epi.png"), 
+          plot_high_rhats_trt)
 
 # loo: elpd and model comparison ####
 build_loo <- function(row, ...){
@@ -185,9 +245,7 @@ build_loo <- function(row, ...){
   if(file.exists(file_name)){
     return(readRDS(file_name))
   }else{
-    rv = loo(build_fit(row), model_names=c(build_name(row))
-             #, moment_match = TRUE
-             )
+    rv = loo(build_fit(row), model_names=c(build_name(row)), moment_match = TRUE)
     saveRDS(rv, file_name)
     return(rv)
   }
@@ -200,10 +258,10 @@ rownames(combinations_df) <- model_names
 
 # get loo 
 tic()
-loos = apply(combinations_df, 1, build_loo)
+loos <- apply(combinations_df, 1, build_loo)
 toc()
-
-pareto_ks <- sum(pareto_k_values(loos[[1]]) > 0.7)
+# get high pareto k's
+high_pareto_ks <- purrr::map(loos, ~.x$diagnostics$pareto_k > 0.7)
 
 # compare models with loo & model averaging weights ####
 comparison_df = loo::loo_compare(loos)
@@ -267,9 +325,9 @@ full_df = cbind(full_df,
 
 # visual inspection of pbma weights ####
 
-plot_ordered_pbmaw <- pbma_df %>% 
-  arrange(pbma_weight) %>%
-  mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>% 
+plot_ordered_pbmaw <- pbma_df |> 
+  arrange(pbma_weight) |>
+  mutate(models = forcats::fct_inorder(rownames(pbma_df))) |> 
   ggplot(aes(x = pbma_weight, y = models)) + 
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
@@ -285,16 +343,19 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_pbmaw_epi.
 # filter out Pseudo-BMA weights close to zero
 # where close to zero means < 1e-5 (?) 
 
-pbma_df %>% arrange(pbma_weight) %>%
-  mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>%
-  filter(pbma_weight >= 1e-05) %>% 
+pbma_df |> arrange(pbma_weight) |>
+  mutate(models = forcats::fct_inorder(rownames(pbma_df))) |>
+  filter(pbma_weight >= 1e-05) |> 
   count()
 
+# set cutoff for PBMA weight
 epsilon = 1e-05
-plot_filtered_pbmaw <- pbma_df %>% 
-  arrange(pbma_weight) %>%
-  mutate(models = forcats::fct_inorder(rownames(pbma_df))) %>%
-  filter(pbma_weight >= epsilon) %>% 
+
+# visualise
+plot_filtered_pbmaw <- pbma_df |> 
+  arrange(pbma_weight) |>
+  mutate(models = forcats::fct_inorder(rownames(pbma_df))) |>
+  filter(pbma_weight >= epsilon) |> 
   {ggplot(., aes(x = pbma_weight, y = models)) + 
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
@@ -310,9 +371,9 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_pbmaw_e
 
 # visual inspection of stacking weights ####
 
-plot_ordered_stackw <- stack_df %>% 
-  arrange(stack_weight) %>%
-  mutate(models = forcats::fct_inorder(rownames(stack_df))) %>% 
+plot_ordered_stackw <- stack_df |> 
+  arrange(stack_weight) |>
+  mutate(models = forcats::fct_inorder(rownames(stack_df))) |> 
   {ggplot(., aes(x = stack_weight, y = models)) + 
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
@@ -329,10 +390,10 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_stackw_epi
 # filter out stacking weights close to zero
 # where close to zero means < 1e-04 (?) 
 
-plot_filtered_stackw <- stack_df %>% 
-  arrange(stack_weight) %>%
-  mutate(models = forcats::fct_inorder(rownames(stack_df))) %>%
-  filter(stack_weight >= 1e-04) %>% 
+plot_filtered_stackw <- stack_df |> 
+  arrange(stack_weight) |>
+  mutate(models = forcats::fct_inorder(rownames(stack_df))) |>
+  filter(stack_weight >= 1e-04) |> 
   {ggplot(., aes(x = stack_weight, y = models)) + 
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
@@ -347,9 +408,9 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_
           base_aspect_ratio = 1.5)
 
 # visual inspection of elpd diff + se ####
-plot_all_elpddiff <- full_df %>%
-  arrange(elpd_diff) %>% 
-  mutate(models = forcats::fct_inorder(rownames(.))) %>%
+plot_all_elpddiff <- full_df |>
+  arrange(elpd_diff) |> 
+  mutate(models = forcats::fct_inorder(rownames(.))) |>
   {ggplot(., aes(x = elpd_diff, y = models)) +
       geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
       geom_point(shape=21, size=2) +
@@ -366,10 +427,13 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_elpddiff_e
 # mean is sensitive to outliers -> is it thus a more "conservative" filter?!
 mean_filter = mean(full_df$elpd_diff)
 
-plot_filter_mean_elpddiff <- full_df %>%
-  arrange(elpd_diff) %>% 
-  mutate(models = forcats::fct_inorder(rownames(.))) %>%
-  filter(elpd_diff >= mean_filter) %>%
+
+
+# visualise filtered set of models 
+plot_filter_mean_elpddiff <- full_df |>
+  arrange(elpd_diff) |> 
+  mutate(models = forcats::fct_inorder(rownames(.))) |>
+  filter(elpd_diff >= mean_filter) |>
   {ggplot(., aes(x = elpd_diff, y = models)) +
       geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
       geom_point(shape=21, size=2) +
@@ -385,10 +449,10 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_mean_el
 
 median_filter = median(full_df$elpd_diff)
 
-plot_filter_median_elpddiff <- full_df %>%
-  arrange(elpd_diff) %>% 
-  mutate(models = forcats::fct_inorder(rownames(.))) %>%
-  filter(elpd_diff >= median_filter) %>%
+plot_filter_median_elpddiff <- full_df |>
+  arrange(elpd_diff) |> 
+  mutate(models = forcats::fct_inorder(rownames(.))) |>
+  filter(elpd_diff >= median_filter) |>
   {ggplot(., aes(x = elpd_diff, y = models)) +
       geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
       geom_point(shape=21, size=2) +
@@ -405,6 +469,41 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_median_
 # Which models are too similar to be meaningfully distinguished wrt pred. performance? -> se overlaps 0
 # ...
 
+# store model names of models with rhat_Trt > 1.01 ####
+filter_out_rhat <- rhat_trt_df %>%
+  filter(rhat_Trt > 1.01) %>%
+  select(model_name)
+
+# store names of models filtered out based on PBMA weight ####
+filter_out_pbma <- full_df %>%
+  mutate(model_name = rownames(.)) %>% 
+  filter(pbma_weight < epsilon) %>%
+  select(model_name)
+
+# store model names of models with elpd_diff < mean(elpd_diff) ####
+filter_out_elpd_diff <- full_df %>%
+  mutate(model_name = rownames(.)) %>% 
+  filter(elpd_diff < mean(elpd_diff)) %>%
+  select(model_name)
+
+# join all filters ####
+model_names <- comb_df$model_name
+
+# find the models that would be selected according to each "filter"
+models_rhat <- setdiff(model_names, filter_out_rhat$model_name)
+models_elpd_diff <- setdiff(model_names, filter_out_elpd_diff$model_name)
+models_pbma <- setdiff(model_names, filter_out_pbma$model_name)
+
+# from https://stackoverflow.com/questions/3695677/how-to-find-common-elements-from-multiple-vectors
+intersect_all <- function(a,b,...){
+  Reduce(intersect, list(a,b,...))
+}
+
+# intersect these vectors of model names to get the models that are left 
+Reduce(intersect, list(models_rhat, models_elpd_diff, models_pbma))
+
+# check how the result differs without PBMA weights 
+Reduce(intersect, list(models_rhat, models_elpd_diff))
 # get response
 # response <- brms::get_y()
 
@@ -415,324 +514,3 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_median_
 
 # What are the worst models? 
 # depends on axis of comparison
-
-################################################################################
-# get eval distance matrix ####
-get_dist <- function(df, col){
-  # scale of col
-  scale = max(df[,col]) - min(df[,col])
-  # get pairwise (rowwise) absolute scaled differences in col
-  compare2 <- t(
-    combn(
-      nrow(df), 
-      m = 2, 
-      FUN = function(x) abs(as.numeric(df[x[1],col]) - as.numeric(df[x[2],col])/scale)))
-  # get distance matrix 
-  distmatrix <- diag(x = 0, nrow = NROW(df), ncol = NROW(df))
-  rownames(distmatrix) <- rownames(df)
-  colnames(distmatrix) <- rownames(df)
-  # add eval distance to lower and upper diagonal 
-  distmatrix[lower.tri(distmatrix)] <- compare2
-  distmatrix[upper.tri(distmatrix)] <- t(distmatrix)[upper.tri(distmatrix)]
-  return(distmatrix)
-}
-
-dist_m_eval <- get_dist(full_df, "pbma_weight")
-# combn(nrow(df), 2) has dimensions sum(1:95) here 
-
-# combine edit and eval distances ####
-dist_comb <- dist_m_eval + distmatrix 
-
-# cluster based on topology and metric of interest ####
-hc_comb <- hclust(as.dist(dist_comb))
-hc_comb_dendro <- dendro_data(as.dendrogram(hc_comb)) 
-
-# add model names as labels
-# dict <- setNames(comb_df$model_name, 1:96)
-# hc_comb_dendro$labels$label <- sapply(hc_comb_dendro$labels$label, function(x) dict[[as.character(x)]])
-
-# plot dendrogram with edit and eval distances ####
-cluster <- cutree(hc_comb, k = 5)
-
-dendrogram_comb <- ggdendrogram(hc_comb_dendro, rotate = TRUE, color=factor(cluster)) 
-
-# This is not great...
-ggplot() + 
-  geom_segment(data=segment(hc_comb_dendro), aes(x=x, y=y, xend=xend, yend=yend)) + 
-  geom_text(data=label(hc_comb_dendro), aes(x, y, label=label, hjust=0.5, color=factor(cluster)), size=3) +
-  coord_flip() + 
-  scale_y_continuous()
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "dendrogram_comb_epi.png"), 
-          dendrogram_comb, 
-          base_height = 14, 
-          base_aspect_ratio = 1.5)
-
-# cut dendrogram to get clusters
-cluster <- cutree(hc_comb, k = 6)
-
-df_test <- as.data.frame(cluster)
-
-df_test <- df_test %>% 
-  mutate(modelname = rownames(df_test)) %>%
-  pivot_wider(names_from = cluster, values_from = modelname)
-
-# how many models are in each cluster?
-as.data.frame(cluster) %>%
-  dplyr::group_by(cluster) %>%
-  dplyr::summarise(n = dplyr::n())
-
-# 
-full_df_clust <- full_df %>%
-  mutate(model_name = rownames(full_df), 
-         model_id = factor(1:NROW(full_df))) %>% 
-  left_join(
-    tibble(
-      model_name = names(cluster),
-      cluster = factor(cluster)
-    )
-  ) 
-
-full_df_clust %>%
-  ggplot(aes(model_id, pbma_weight)) +
-  geom_point(aes(color = cluster)) + 
-  theme_bw()
-
-full_df_clust %>%
-  ggplot(aes(model_id, elpd_loo)) +
-  geom_point(aes(color = cluster)) + 
-  theme_bw()
-
-
-
-# Niko's code 
-
-
-
-build_color <- function(row){
-  rgb(0., 0., 0., as.numeric(row[["pbma_weight"]]))
-  # rgb(0., 0., 0., .1 + .9 * as.numeric(row[["pbma_weight"]]))
-}
-
-dendrogram_plot <- function(model_df, col_){
-  full_df = build_full_df(model_df)
-  distances = build_distancess(model_df, full_df, col_)
-  
-  hc <- dendsort(as.dendrogram(hclust(as.dist(distances))))
-  hc_df = full_df[hc %>% labels,]
-  pbma_weights = hc_df$pbma_weights
-  max_pbma_weight = max(hc_df$pbma_weight)
-  hc_df$pbma_weight <- hc_df$pbma_weight/max_pbma_weight
-  # print(cbind(hc_df, pbma_weights=hc_df$pbma_weight/max(hc_df$pbma_weight))$pbma_weights)
-  hc_colors = apply(hc_df, 1, build_color)
-  hc_df$pbma_weight <- hc_df$pbma_weight*max_pbma_weight
-  # print(hc_df$pbma_weights)
-  # print(hc_colors)
-  
-  # hc <- hc %>%
-  #   color_branches(k = length(model_df)) %>%
-  #   color_labels(k = length(model_df)) %>% 
-  #   set("labels_colors", hc_colors)
-  
-  # hc_data = dendro_data(as.dendrogram(hclust(as.dist(distances))))
-  hc_data = dendro_data(hc)
-  xx = c(.5, .5 + hc_data$labels$x)
-  yy = c(0, cumsum(hc_df$pbma_weight))
-  ff <- approxfun(xx, yy)
-  hc_data$segments$x <- ff(hc_data$segments$x)
-  hc_data$segments$xend <- ff(hc_data$segments$xend)
-  hc_data$labels$x <- ff(hc_data$labels$x)
-  labels = label(hc_data)
-  
-  # hc_data
-  
-  # ggplot() + 
-  # ggdendrogram(hclust(as.dist(distances))) + 
-  ggplot(segment(hc_data)) + 
-    geom_segment(aes(x=y, y=x, xend=yend, yend=xend)) + 
-    # scale_colour_manual(hc_colors) +
-    geom_text(data=labels,
-              aes(label=label, x=0, y=x), hjust=1, vjust=0, color=hc_colors, nudge_y=.01) +
-    scale_x_reverse() +
-    ylim(0, 1) +
-    ylab("cumulative pbma weight") + 
-    ggtitle(paste0("Opacity and height reflect pbma weights.\nClusters reflect topology and ", col_, ".\nDummy lines to match other plot\n...\n..\n.")) +
-    theme_minimal() + 
-    # scale_x_discrete(position = "top")  + 
-    theme(
-      legend.position = "none",
-      panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-      panel.background = element_blank(), axis.line = element_blank(),
-      # axis.text.x = element_blank(), axis.title.x = element_blank(),
-      # axis.text.y = element_blank(), axis.title.y = element_blank()
-    )
-  # return(ggdendrogram(dendsort(hc)))
-  # par(mar=c(5,5,5,2.5*(2+length(model_df))))
-  # ggplot() +
-  #     ggdendrogram(dendsort(hc)) + 
-  #     ggtitle("Color is currently non-functional.\nOpacity reflects pbma weights.\nClusters reflect distance in topology and in mean treatment effect.\nNot sure how to change the figure height X.X.")
-  # plot(dendsort(hc), horiz=TRUE, xlab="X.X", main="Color is currently non-functional.\nOpacity reflects pbma weights.\nClusters reflect distance in topology and in mean treatment effect.\nNot sure how to change the figure height X.X.")
-  # Circular dendrogram
-  # circlize_dendrogram(hc,
-  #                     labels_track_height = .5,
-  #                     dend_track_height = 0.1)
-}
-treatment_plot <- function(model_df, ccol, scol=ccol){
-  full_df = build_full_df(model_df)
-  distances = build_distancess(model_df, full_df, ccol)
-  hc <- dendsort(as.dendrogram(hclust(as.dist(distances)))) 
-  hc_df = full_df[hc %>% labels,]
-  # par(mar=c(5,5,5,5))
-  p = ggplot() + 
-    geom_vline(xintercept=0, alpha=.1) +  
-    xlab(scol) + 
-    ggtitle("Each dot/rectangle/vertical line represents one model.\n(Shaded) width represents central 5%-95% and 25%-75% intervals.\nDots/vertical lines represent modelwise means.\nShort horizontal lines separate models.\nHeight represent pbma weights.\nSome models have effectively zero height/weight.")
-  # scale_color_manual(values=hc_colors)
-  left = 0
-  for(i in 1:nrow(hc_df)){
-    row = hc_df[i,]
-    # for(i in 1:20) {
-    # for(i in order(full_df$treatment_mean)) {
-    #     row = full_df[i, ]
-    right = left + row$pbma_weight
-    center = .5 * (left + right)
-    # color = build_color(row)
-    m = row$treatment_mean
-    # s = row$treatment_se
-    p = p + 
-      # geom_point(aes_string(x=center, y=m)) +
-      geom_hline(yintercept=center, alpha=.1, color="black") +
-      geom_rect(aes_(ymin=left, ymax=right, xmin=row$treatment_q05, xmax=row$treatment_q95), fill="black", alpha=.25) +
-      geom_rect(aes_(ymin=left, ymax=right, xmin=row$treatment_q25, xmax=row$treatment_q75), fill="black", alpha=.25) +
-      geom_errorbar(aes_(ymin=left, ymax=right, x=m), color="black", width=.01) +
-      geom_line(aes_(y=c(left, right), x=c(m,m)), color="black") +
-      geom_point(aes_(y=center, x=m), color="black")
-    # p = p + geom_rect(aes(xmin=left, xmax=right, ymin=m-s, ymax=m+s, fill=color, alpha=.1))
-    left = right
-  }
-  p + 
-    # geom_hline(yintercept=full_df$treatment_mean %*% full_df$pbma_weight) +
-    theme_minimal() + 
-    ylim(0, 1) +
-    # scale_x_discrete(position = "top")  + 
-    theme(
-      legend.position = "none",
-      panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-      panel.background = element_blank(), axis.line = element_blank(),
-      axis.text.y = element_blank(), axis.title.y = element_blank()
-    )
-}
-combined_plot <- function(model_df, ccol, scol){
-  full_df = build_full_df(model_df)
-  distances = build_distancess(model_df, full_df, ccol)
-  hc <- dendsort(as.dendrogram(hclust(as.dist(distances)))) 
-  hc_df = full_df[hc %>% labels,]
-  
-  # DENDROGRAM
-  pbma_weights = hc_df$pbma_weights
-  max_pbma_weight = max(hc_df$pbma_weight)
-  hc_df$pbma_weight <- hc_df$pbma_weight/max_pbma_weight
-  # print(cbind(hc_df, pbma_weights=hc_df$pbma_weight/max(hc_df$pbma_weight))$pbma_weights)
-  hc_colors = apply(hc_df, 1, build_color)
-  hc_df$pbma_weight <- hc_df$pbma_weight*max_pbma_weight
-  # print(hc_df$pbma_weights)
-  # print(hc_colors)
-  
-  # hc <- hc %>%
-  #   color_branches(k = length(model_df)) %>%
-  #   color_labels(k = length(model_df)) %>% 
-  #   set("labels_colors", hc_colors)
-  
-  # hc_data = dendro_data(as.dendrogram(hclust(as.dist(distances))))
-  hc_data = dendro_data(hc)
-  xx = c(.5, .5 + hc_data$labels$x)
-  yy = c(0, cumsum(hc_df$pbma_weight))
-  ff <- approxfun(xx, yy)
-  hc_data$segments$x <- ff(hc_data$segments$x)
-  hc_data$segments$xend <- ff(hc_data$segments$xend)
-  hc_data$labels$x <- ff(hc_data$labels$x)
-  labels = label(hc_data)
-  
-  # hc_data
-  
-  # ggplot() + 
-  # ggdendrogram(hclust(as.dist(distances))) + 
-  dendrogram_plot = ggplot(segment(hc_data)) + 
-    geom_segment(aes(x=y, y=x, xend=yend, yend=xend)) + 
-    # scale_colour_manual(hc_colors) +
-    geom_text(data=labels,
-              aes(label=label, x=0, y=x), hjust=1, vjust=0, color=hc_colors, nudge_y=.01) +
-    scale_x_reverse() +
-    ylim(0, 1) +
-    ylab("cumulative pbma weight") + 
-    ggtitle(paste0("Opacity and height reflect pbma weights.\nClusters reflect topology and ", ccol, ".\nDummy lines to match other plot\n...\n..\n.")) +
-    theme_minimal() + 
-    # scale_x_discrete(position = "top")  + 
-    theme(
-      legend.position = "none",
-      panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-      panel.background = element_blank(), axis.line = element_blank(),
-      axis.text.x = element_text(color="white"), axis.title.x = element_text(color="white"),
-      # axis.text.y = element_blank(), axis.title.y = element_blank()
-    )
-  # par(mar=c(5,5,5,5))
-  
-  
-  # TREATMENT
-  
-  treatment_plot = ggplot() + 
-    geom_vline(xintercept=0, alpha=.1) +  
-    xlab(scol) + 
-    ggtitle("Each dot/rectangle/vertical line represents one model.\n(Shaded) width represents central 5%-95% and 25%-75% intervals.\nDots/vertical lines represent modelwise means.\nShort horizontal lines separate models.\nHeight represent pbma weights.\nSome models have effectively zero height/weight.")
-  # scale_color_manual(values=hc_colors)
-  left = 0
-  for(i in 1:nrow(hc_df)){
-    row = hc_df[i,]
-    # for(i in 1:20) {
-    # for(i in order(full_df$treatment_mean)) {
-    #     row = full_df[i, ]
-    right = left + row$pbma_weight
-    center = .5 * (left + right)
-    # color = build_color(row)
-    m = row$treatment_mean
-    # s = row$treatment_se
-    treatment_plot = treatment_plot + 
-      # geom_point(aes_string(x=center, y=m)) +
-      geom_hline(yintercept=center, alpha=.1, color="black") +
-      geom_rect(aes_(ymin=left, ymax=right, xmin=row$treatment_q05, xmax=row$treatment_q95), fill="black", alpha=.25) +
-      geom_rect(aes_(ymin=left, ymax=right, xmin=row$treatment_q25, xmax=row$treatment_q75), fill="black", alpha=.25) +
-      geom_errorbar(aes_(ymin=left, ymax=right, x=m), color="black", width=.01) +
-      geom_line(aes_(y=c(left, right), x=c(m,m)), color="black") +
-      geom_point(aes_(y=center, x=m), color="black")
-    # p = p + geom_rect(aes(xmin=left, xmax=right, ymin=m-s, ymax=m+s, fill=color, alpha=.1))
-    left = right
-  }
-  treatment_plot = treatment_plot + 
-    # geom_hline(yintercept=full_df$treatment_mean %*% full_df$pbma_weight) +
-    theme_minimal() + 
-    ylim(0, 1) +
-    # scale_x_discrete(position = "top")  + 
-    theme(
-      legend.position = "none",
-      panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
-      panel.background = element_blank(), axis.line = element_blank(),
-      axis.text.y = element_blank(), axis.title.y = element_blank()
-    )
-  
-  grid.arrange(dendrogram_plot, treatment_plot, ncol=2)    
-}
-
-show_table <- function(model_df, col, cutoff=1e-6){
-  full_df = build_full_df(model_df)
-  filtered_df = full_df %>% filter(pbma_weight > cutoff) %>% arrange(desc(elpd_diff))
-  knitr::kable(filtered_df[c(col, "pbma_weight", "elpd_diff", "se_diff")], digits = 2) %>% 
-    add_header_above(data.frame(title=c(paste("Cutoff: pbma_weight > ", cutoff)), span=c(5)))
-  # knitr::kable(full_df[order(-full_df$elpd_diff),][c(col, "pbma_weight", "elpd_diff", "se_diff")], digits = 2)
-}
-show_all <- function(model_df, ccol, scol="treatment_mean"){
-  # print(dendrogram_plot(model_df, ccol))
-  # print(treatment_plot(model_df, ccol, scol))
-  combined_plot(model_df, ccol, scol)
-  show_table(model_df, scol)
-}
-# distances = build_distancess(full_df, "treatment_mean")
