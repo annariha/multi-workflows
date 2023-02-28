@@ -142,7 +142,7 @@ hc_edit_dendro <- dendro_data(hc_edit)
 dict <- setNames(paste0(comb_df$model_name,", ", comb_df$priors), 1:192)
 hc_edit_dendro$labels$label <- sapply(hc_edit_dendro$labels$label, function(x) dict[[as.character(x)]])
 
-# plot dendrogram with edit distances ####
+# Plots: plot dendrogram with edit distances ####
 dendrogram_plot_edit <- ggdendrogram(hc_edit_dendro, rotate = TRUE)  
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "dendrogram_edit_epi.png"), 
@@ -151,7 +151,6 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "dendrogram_edit_epi
           base_aspect_ratio = 1.5)
 
 # fit model for each combination ####
-
 build_fit <- function(row, ...){
   brm(
     formula=build_brms_formula(row), 
@@ -162,31 +161,35 @@ build_fit <- function(row, ...){
   ) 
 }
 
-# high Rhat for treatment ####
-
-test_row <- combinations_df[1,]
-mod1 <- build_fit(test_row)
+# add model fits for each combination ####
+tic()
+comb_df <- comb_df |> 
+  mutate(
+    model_fit = apply(combinations_df, 1, build_fit)) 
+toc()
 
 # get all modelfits 
 models <- apply(combinations_df, 1, build_fit)
-
 # This gives the same result as using apply(...) 
 models <- combinations_df |>
   group_nest(row_number()) |>
   pull(data) |>
   purrr::map(build_fit)
 
+# high Rhat for treatment ####
+comb_df <- comb_df |> 
+  mutate(rhats = purrr::map(model_fit, brms::rhat),
+         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
+         rhats_raw = purrr::map(model_fit, get_rhat_trt))
+
 # all rhats 
 all_rhats <- purrr::map(models, brms::rhat)
-
-# get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
-rhats_trt <- purrr::map(models, get_rhat_trt)
 
 # test
 names(rhats_trt) <- comb_df$model_name
 
 rhat_trt_df <- 
-  tibble(model_name = comb_df$model_name, rhats_raw = rhats_trt) |>
+  tibble(model_name = comb_df$model_name, rhats_raw = purrr::map(comb_df$model_fit, get_rhat_trt)) |>
   unnest(rhats_raw) |>
   group_by(model_name) |>
   mutate(key = row_number()) |>
@@ -196,7 +199,7 @@ rhat_trt_df <-
   mutate(high_rhat_Trt = ifelse(rhat_Trt > 1.01, 1, 0),
          high_rhat_zBaseTrt = ifelse(rhat_zBaseTrt > 1.01, 1, 0))
 
-# plot Rhats for treatment 
+# Plots: visual inspection of convergence checks (here: Rhat) for treatment var ####
 plot_rhats_trt <- 
   ggplot(data = rhat_trt_df, aes(rhat_Trt, model_name)) + 
   geom_point() + 
@@ -251,32 +254,78 @@ build_loo <- function(row, ...){
   }
 } 
 
-#build_loo(test_row)
-
-model_names = apply(combinations_df, 1, build_name)
-rownames(combinations_df) <- model_names
+# set row names to model names 
+rownames(combinations_df) <- apply(combinations_df, 1, build_name)
 
 # get loo 
 tic()
 loos <- apply(combinations_df, 1, build_loo)
 toc()
-# get high pareto k's
-high_pareto_ks <- purrr::map(loos, ~.x$diagnostics$pareto_k > 0.7)
 
 # compare models with loo & model averaging weights ####
 comparison_df = loo::loo_compare(loos)
+
+# get pareto k's 
+all_pareto_ks <- purrr::map(loos, ~.x$diagnostics$pareto_k)
+
+get_sum_high_ks <- function(x, ...){
+  # x is a vector of pareto k's
+  result = sum(x > 0.7)
+  return(result)
+}
+
+# Plots: visualise Pareto k's for all models ####
+plot_all_pareto_ks <- tibble(model_name = names(all_pareto_ks), pareto_k = all_pareto_ks) %>%
+  mutate(sum_pareto_k = purrr::map_dbl(pareto_k, get_sum_high_ks)) %>% 
+  arrange(sum_pareto_k) %>%
+  mutate(model_name = forcats::fct_inorder(model_name)) %>%
+  unnest(pareto_k) %>%
+  {ggplot(., aes(x = pareto_k, y = model_name)) + 
+      geom_point(shape = 3, color = "grey20") +
+      geom_vline(xintercept = 0.7) +
+      theme_bw() + 
+      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))}
+
+save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_pareto_ks_epi.png"), 
+          plot_all_pareto_ks, 
+          base_height = 19, 
+          base_aspect_ratio = 1.5)
+
+# get number of model parameters to compare with p_loo ####
+
+comb_df <- comb_df |> 
+  mutate(nparams = purrr::map_dbl(model_fit, brms::nvariables))
+
+# get high pareto k's ####
+pareto_ks <- purrr::map(loos, ~.x$diagnostics$pareto_k)
+
+# sum of high pareto k's for each model
+sum_high_pareto_ks <- purrr::map_dbl(pareto_ks, get_sum_high_ks)
+
+high_pareto_ks <- data.frame(sum_high_pareto_ks = as.numeric(sum_high_pareto_ks), row.names = names(sum_high_pareto_ks)) 
+
 # extract pseudo-BMA weights
 pbma_weights = loo_model_weights(loos, method="pseudobma")
 pbma_df = data.frame(pbma_weight=as.numeric(pbma_weights), row.names=names(pbma_weights))
+
 # extract stacking weights
 stack_weights = loo_model_weights(loos, method="stacking")
 stack_df = data.frame(stack_weight=as.numeric(stack_weights), row.names=names(stack_weights))
+
 # add loo comparison table 
 full_df = merge(combinations_df, comparison_df, by=0)
 # set row names to model names
 rownames(full_df) <- full_df$Row.names
 # select everything despite Row.names
 full_df = full_df[2:length(full_df)]
+
+# add sum of pareto k's over 0.7
+full_df = merge(full_df, high_pareto_ks, by=0)
+# set row names to model names
+rownames(full_df) <- full_df$Row.names
+# select everything despite Row.names
+full_df = full_df[2:length(full_df)]
+
 # merge pseudo BMA weights 
 full_df = merge(full_df, pbma_df, by=0)
 # set row names to model names (again) 
@@ -320,10 +369,7 @@ full_df = cbind(full_df,
                 treatment_q95=as.numeric(lapply(treatment_sampless, partial(quantile, probs=.95, names=FALSE)))
 )
 
-# visual inspection of convergence checks for treatment var ####
-# ...
-
-# visual inspection of pbma weights ####
+# Plots: visual inspection of pbma weights ####
 
 plot_ordered_pbmaw <- pbma_df |> 
   arrange(pbma_weight) |>
@@ -369,7 +415,7 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_pbmaw_e
           base_height = 10, 
           base_aspect_ratio = 1.5)
 
-# visual inspection of stacking weights ####
+# Plots: visual inspection of stacking weights ####
 
 plot_ordered_stackw <- stack_df |> 
   arrange(stack_weight) |>
@@ -407,7 +453,7 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_
           base_height = 15, 
           base_aspect_ratio = 1.5)
 
-# visual inspection of elpd diff + se ####
+# Plots: visual inspection of elpd diff + se ####
 plot_all_elpddiff <- full_df |>
   arrange(elpd_diff) |> 
   mutate(models = forcats::fct_inorder(rownames(.))) |>
@@ -426,8 +472,6 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_elpddiff_e
 
 # mean is sensitive to outliers -> is it thus a more "conservative" filter?!
 mean_filter = mean(full_df$elpd_diff)
-
-
 
 # visualise filtered set of models 
 plot_filter_mean_elpddiff <- full_df |>
@@ -474,6 +518,13 @@ filter_out_rhat <- rhat_trt_df %>%
   filter(rhat_Trt > 1.01) %>%
   select(model_name)
 
+# filter out models with "too many" high rhats ####
+filter_out_high_pareto_k <- tibble(model_name = names(all_pareto_ks), pareto_k = all_pareto_ks) |>
+  mutate(sum_pareto_k = purrr::map_dbl(pareto_k, get_sum_high_ks)) |>
+  # filter out if more than 5% of Pareto k's are "bad"
+  filter(sum_pareto_k > 12) |> 
+  select(model_name)
+
 # store names of models filtered out based on PBMA weight ####
 filter_out_pbma <- full_df %>%
   mutate(model_name = rownames(.)) %>% 
@@ -491,6 +542,7 @@ model_names <- comb_df$model_name
 
 # find the models that would be selected according to each "filter"
 models_rhat <- setdiff(model_names, filter_out_rhat$model_name)
+models_pareto_k <- setdiff(model_names, filter_out_high_pareto_k$model_name)
 models_elpd_diff <- setdiff(model_names, filter_out_elpd_diff$model_name)
 models_pbma <- setdiff(model_names, filter_out_pbma$model_name)
 
@@ -500,7 +552,9 @@ intersect_all <- function(a,b,...){
 }
 
 # intersect these vectors of model names to get the models that are left 
-Reduce(intersect, list(models_rhat, models_elpd_diff, models_pbma))
+Reduce(intersect, list(models_rhat, models_pareto_k, models_elpd_diff, models_pbma))
+
+Reduce(intersect, list(models_rhat, models_pareto_k))
 
 # check how the result differs without PBMA weights 
 Reduce(intersect, list(models_rhat, models_elpd_diff))
