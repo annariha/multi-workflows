@@ -12,6 +12,7 @@ pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse,
 
 source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_brms_formula.R"))
+source(here::here("case-studies", "epilepsy", "R", "build_fit.R"))
 source(here::here("case-studies", "epilepsy", "R", "get_rhat_trt.R"))
 
 # set seed
@@ -32,10 +33,7 @@ families <- list(poisson = poisson(),
 priors <- list(brms_default = NULL, 
                brms_horseshoe = set_prior("horseshoe(3)")
                #,rstanarm_default = set_prior("", class = "b")
-               )
-
-# get priors from brms model 
-#get_prior(formula, dat)
+)
 
 # intercept
 # coefficients 
@@ -56,8 +54,9 @@ combinations_df <- expand.grid(
   # random effects 
   patient = c("", "(1 | patient)"),
   visit = c("", "(1 | visit)"),
-  obs = c("", "(1 | obs)")
-  )
+  obs = c("", "(1 | obs)") 
+  # "Sometimes overdispersion is modelled by adding “random effects” for each individual." 
+)
 
 # add interaction effect in the rows where treatment was left out, (i.e., where Trt == "")
 combinations_df <- combinations_df |> 
@@ -79,87 +78,14 @@ combinations_df <- combinations_df |>
 combinations_df <- combinations_df |> 
   mutate(priors = names(combinations_df$prior))
 
-# Plots: visualise treatment/control group and visit, patient level info ####
-
-# Why random effect based on visits and patients?
-plot_patient_visit_count <- 
-  dat |> 
-  mutate(treatment = ifelse(Trt == 0, "no treatment", "treatment")) |>
-  ggplot(aes(x = visit, y = count, group = patient, color = patient)) +
-  geom_point() +
-  geom_line() +
-  ylab("seizure count") +
-  theme_bw() + 
-  theme(legend.position = "none") +
-  facet_wrap(~treatment)
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "plot_patient_visit_count_epi.png"), 
-          plot_patient_visit_count)
-
-# Why add an interaction effect? 
-plot_base_count <-
-  dat |> 
-  mutate(treatment = ifelse(Trt == 0, "no treatment", "treatment")) |>
-  ggplot(aes(x = Base)) +
-  geom_point(aes(y = count, color = patient), size=0.8) +
-  scale_x_continuous("base seizure count") +
-  ylab("seizure count") +
-  theme_bw() + 
-  theme(legend.position = "none") +
-  facet_wrap(~treatment)
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "plot_base_count_epi.png"), 
-          plot_base_count)
+# store combinations dataframe to use in other scripts 
+write_rds(combinations_df, here::here("case-studies", "epilepsy", "data", "prelim", "combinations_df.rds"))
 
 # add model name and brms formula for each combination ####
 comb_df <- combinations_df |> 
   mutate(
     model_name = apply(combinations_df, 1, build_name), 
     formula = apply(combinations_df, 1, build_brms_formula)) 
-
-# compare every column rowwise in df ####
-# *1 to turn T/F to 1/0 if value in column different 
-# combn() gives combinations of all rows  
-df <- as.matrix(combinations_df  |> select(!prior))
-compare <- t(combn(nrow(df), 2, FUN = function(x) df[x[1],]!=df[x[2],])) * 1
-vals <- rowSums(compare)
-
-# create distance matrix with zero on diagonal ####
-distmatrix <- diag(x = 0, nrow = NROW(combinations_df), ncol = NROW(combinations_df))
-rownames(distmatrix) <- rownames(combinations_df)
-colnames(distmatrix) <- rownames(combinations_df)
-
-# add edit distance to lower and upper diagonal 
-distmatrix[lower.tri(distmatrix)] <- vals
-distmatrix[upper.tri(distmatrix)] <- t(distmatrix)[upper.tri(distmatrix)]
-#forceSymmetric(distmatrix)
-
-# cluster based on topology ####
-hc_edit <- as.dendrogram(hclust(as.dist(distmatrix))) 
-hc_edit_dendro <- dendro_data(hc_edit) 
-
-# add model names as labels
-dict <- setNames(paste0(comb_df$model_name,", ", comb_df$priors), 1:192)
-hc_edit_dendro$labels$label <- sapply(hc_edit_dendro$labels$label, function(x) dict[[as.character(x)]])
-
-# Plots: plot dendrogram with edit distances ####
-dendrogram_plot_edit <- ggdendrogram(hc_edit_dendro, rotate = TRUE)  
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "dendrogram_edit_epi.png"), 
-          dendrogram_plot_edit, 
-          base_height = 19, 
-          base_aspect_ratio = 1.5)
-
-# fit model for each combination ####
-build_fit <- function(row, ...){
-  brm(
-    formula=build_brms_formula(row), 
-    data=epilepsy, 
-    prior=row[["prior"]],
-    file=digest::digest(build_name(row), algo="md5"),
-    backend="cmdstanr", silent=2, refresh=0
-  ) 
-}
 
 # add model fits for each combination ####
 tic()
@@ -170,17 +96,21 @@ toc()
 
 # get all modelfits 
 models <- apply(combinations_df, 1, build_fit)
+
 # This gives the same result as using apply(...) 
-models <- combinations_df |>
-  group_nest(row_number()) |>
-  pull(data) |>
-  purrr::map(build_fit)
+#models <- combinations_df |>
+#  group_nest(row_number()) |>
+#  pull(data) |>
+#  purrr::map(build_fit)
 
 # high Rhat for treatment ####
 comb_df <- comb_df |> 
   mutate(rhats = purrr::map(model_fit, brms::rhat),
          # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
          rhats_raw = purrr::map(model_fit, get_rhat_trt))
+
+# store comb dataframe to use in other scripts 
+write_rds(comb_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df.rds"))
 
 # all rhats 
 all_rhats <- purrr::map(models, brms::rhat)
@@ -199,48 +129,6 @@ rhat_trt_df <-
   mutate(high_rhat_Trt = ifelse(rhat_Trt > 1.01, 1, 0),
          high_rhat_zBaseTrt = ifelse(rhat_zBaseTrt > 1.01, 1, 0))
 
-# Plots: visual inspection of convergence checks (here: Rhat) for treatment var ####
-plot_rhats_trt <- 
-  ggplot(data = rhat_trt_df, aes(rhat_Trt, model_name)) + 
-  geom_point() + 
-  geom_vline(xintercept = 1.01, linetype="dotted") + 
-  ggtitle(paste0("All models (k=", NROW(rhat_trt_df), ")")) + 
-  theme_bw() + 
-  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_rhats_trt_epi.png"), 
-          plot_rhats_trt,
-          base_height = 19, 
-          base_aspect_ratio = 1.5)
-
-plot_filtered_rhats_trt <- rhat_trt_df %>%
-  filter(rhat_Trt < 1.01) %>%
-  {ggplot(., aes(x = rhat_Trt, y = model_name)) + 
-      geom_point() +
-      geom_vline(xintercept = 1.01, linetype="dotted") +
-      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
-      theme_bw() + 
-      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
-  }
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_rhats_trt_epi.png"), 
-          plot_filtered_rhats_trt,
-          base_height = 19, 
-          base_aspect_ratio = 1.5)
-
-plot_high_rhats_trt <- rhat_trt_df %>%
-  filter(rhat_Trt > 1.01) %>%
-  {ggplot(., aes(x = rhat_Trt, y = model_name)) + 
-      geom_point() +
-      geom_vline(xintercept = 1.01, linetype="dotted") +
-      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
-      theme_bw() + 
-      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
-  }
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "plot_high_rhats_trt_epi.png"), 
-          plot_high_rhats_trt)
-
 # loo: elpd and model comparison ####
 build_loo <- function(row, ...){
   # print(build_name(row))
@@ -248,7 +136,7 @@ build_loo <- function(row, ...){
   if(file.exists(file_name)){
     return(readRDS(file_name))
   }else{
-    rv = loo(build_fit(row), model_names=c(build_name(row)), moment_match = TRUE)
+    rv = loo(build_fit(row), model_names=c(build_name(row)))
     saveRDS(rv, file_name)
     return(rv)
   }
@@ -357,7 +245,7 @@ spread_draws(mod, b_Trt1)
 treatment_sampless = apply(combinations_df, 1, get_posterior_treat)
 
 test_row <- 
-test_fit <- build_fit(combinations_df[1,])
+  test_fit <- build_fit(combinations_df[1,])
 
 full_df = cbind(full_df, 
                 model_name=model_names,
@@ -375,11 +263,11 @@ plot_ordered_pbmaw <- pbma_df |>
   arrange(pbma_weight) |>
   mutate(models = forcats::fct_inorder(rownames(pbma_df))) |> 
   ggplot(aes(x = pbma_weight, y = models)) + 
-      geom_point(shape=21, size=2) +
-      geom_vline(xintercept = 0, linetype="dotted") +
-      ggtitle(paste0("All models (k=", NROW(pbma_df), ")")) + 
-      theme_bw() + 
-      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  geom_point(shape=21, size=2) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("All models (k=", NROW(pbma_df), ")")) + 
+  theme_bw() + 
+  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_pbmaw_epi.png"), 
           plot_ordered_pbmaw, 
