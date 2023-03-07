@@ -3,7 +3,7 @@
 # setup ####
 # load packages 
 if(!requireNamespace("pacman"))install.packages("pacman")
-pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse, 
+pacman::p_load(here, tictoc, future, furrr, purrr, parallel, brms, Matrix, tidyverse, 
                tidybayes, transport, loo, multiverse, priorsense, cmdstanr,
                ggdendro, cowplot)
 
@@ -14,13 +14,15 @@ source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_brms_formula.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_fit.R"))
 source(here::here("case-studies", "epilepsy", "R", "get_rhat_trt.R"))
+source(here::here("case-studies", "epilepsy", "R", "get_div_trans.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_loo.R"))
 
 # set seed
 set.seed(42424242)
 
 # set # of cores 
-nc <- detectCores() - 1
+nc <- detectCores() - 2
+options(mc.cores = nc) 
 
 # load data ####
 
@@ -79,6 +81,21 @@ comb_df <- combinations_df |>
     model_name = apply(combinations_df, 1, build_name), 
     formula = apply(combinations_df, 1, build_brms_formula)) 
 
+# make stancode for each model ####
+helper_data <- comb_df |>
+  select(formula, family, prior) |>
+  mutate(data = list(brms::epilepsy)) |>
+  mutate(save_model = here::here("case-studies", "epilepsy", "Stan", paste0("model_", 1:NROW(data), ".stan")))
+
+# create stancode & save ####
+purrr::pmap(helper_data, make_stancode)
+
+# model fit with cmdstanr ####
+#cmdstan_model(stan_file = poisson_re_int)
+
+# data for cmdstanr ####
+# samples with cmdstanr ####
+
 # add model fits for each combination ####
 tic()
 comb_df <- comb_df |> 
@@ -95,71 +112,177 @@ toc()
 #  pull(data) |>
 #  purrr::map(build_fit)
 
+
+# 2nd step: computation ####
+
+# divergent transitions
+comb_df <- comb_df |>
+  mutate(div_trans = purrr::map_dbl(model_fit, get_div_trans))
+
+# models without divergent transitions ####
+comb_df_filtered <- comb_df |>
+  filter(div_trans == 0) 
+
+# get all rhats 
+# rhats = purrr::map(model_fit, brms::rhat)
+
 # high Rhat for treatment ####
 comb_df <- comb_df |> 
-  mutate(rhats = purrr::map(model_fit, brms::rhat),
-         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
-         rhats_raw = purrr::map(model_fit, get_rhat_trt))
+  mutate(
+    # get rhats for treatment (i.e., only Rhats of "b_Trt1")
+    rhats_raw = purrr::map_dbl(model_fit, get_rhat_trt))
+
+# add an indicator for computational issues ####
+comb_df  <- comb_df |>
+  mutate(no_issues = ifelse(div_trans == 0 & rhats_raw < 1.01, 1, 0))
 
 # store comb dataframe to use in other scripts 
 write_rds(comb_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_without_obs.rds"))
 
-# loo: elpd and model comparison ####
+# reduce df for plotting 
+comb_df_for_plots <- comb_df |>
+  filter(div_trans == 0) |>
+  filter(rhats_raw < 1.01) |>
+  select(model_name, model_fit, visit, div_trans, rhats_raw)
 
+# for plotting 
+write_rds(comb_df_for_plots, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_without_obs.rds"))
+
+# 1st step: elpd all models ####
+
+# model comparison with loo elpd 
 # loo() works with cmdstanr object but moment matching not possible -> dev version?
 # loo(., moment_match = TRUE) requires backend = rstan & save_pars = save_pars(all = TRUE) in brm()
 # integrated loo
 
 # get loo 
 tic()
-loos <- apply(combinations_df, 1, build_loo_rstan)
+loos <- apply(combinations_df, 1, build_loo)
+toc()
+
+write_rds(loos, here::here("case-studies", "epilepsy", "data", "prelim", "loo_df_all_epi.rds"))
+loos <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "loo_df_all_epi.rds"))
+
+# get high Pareto k's ####
+
+# which models have Pareto k's > 0.7?
+get_sum_high_ks <- function(x, ...){
+  # x is a vector of pareto k's
+  result = sum(x > 0.7)
+  return(result)
+}
+# extract Pareto k's for all models
+pareto_ks <- purrr::map(loos, ~.x$diagnostics$pareto_k)
+# sum of high Pareto k's for each model
+sum_high_pareto_ks <- purrr::map_dbl(pareto_ks, get_sum_high_ks)
+# modelname and number of high Pareto k's
+high_pareto_ks <- tibble(model_name = names(sum_high_pareto_ks), sum_high_pareto_ks = as.numeric(sum_high_pareto_ks)) 
+
+# modelname, loos, Pareto k's
+loo_df <- tibble(model_name = names(loos), loos = loos) |>
+  mutate(sum_high_pareto_ks = purrr::map_dbl(purrr::map(loos, ~.x$diagnostics$pareto_k), get_sum_high_ks))
+
+# all loos with number of bad Pareto k's < 5% of obs 
+loo_df_without_95 <- loo_df |>
+  filter(sum_high_pareto_ks < (NROW(dat) / 100) * 5)
+
+# compare models with loo & model averaging weights for the above models ####
+comparison_df = loo::loo_compare(loo_df_without_95$loos)
+# add loo comparison table 
+full_df = merge(comb_df, comparison_df, by=0)
+# set row names to model names
+rownames(full_df) <- full_df$Row.names
+# select everything despite Row.names
+full_df = full_df[2:length(full_df)]
+
+# extract pseudo-BMA weights for the above models ####
+pbma_weights = loo_model_weights(loo_df_without_95$loos, method="pseudobma")
+pbma_df = data.frame(pbma_weight=as.numeric(pbma_weights), row.names=names(pbma_weights))
+full_df = merge(full_df, pbma_df, by=0)
+# set row names to model names (again) 
+rownames(full_df) <- full_df$Row.names
+# select everything despite Row.names
+full_df = full_df[2:length(full_df)]
+
+# store intermediate result
+write_rds(full_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_loo_df_without_95_epi.rds"))
+full_df <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "comb_loo_df_without_95_epi.rds"))
+
+# reduce df for plotting 
+comb_df_for_plots <- full_df |>
+  filter(abs(elpd_diff) < 4) |>
+  filter(pbma_weight > 0.01) |>
+  filter(no_issues == 1) |>
+  arrange(desc(elpd_diff)) |>
+  select(model_name, model_fit, no_issues, elpd_diff, se_diff, pbma_weight)
+
+# for plotting 
+write_rds(comb_df_for_plots, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_without_obs_epi.rds"))
+write_rds(comb_df_for_plots, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_minimal_without_obs_epi.rds"))
+
+# Which models need moment matching (or integrated loo)? ####
+# approx. 5% too high -> 12 or more bad values 
+
+loo_df |>
+  filter(sum_high_pareto_ks >= (NROW(dat) / 100) * 5)
+
+# model 95 has issues 
+# Error in mm_list[[ii]]$i : $ operator is invalid for atomic vectors
+#In addition: Warning message:
+#  In parallel::mclapply(X = I, mc.cores = cores, FUN = function(i) loo_moment_match_i_fun(i)) :
+#  scheduled core 5 encountered error in user code, all values of the job will be affected
+#Error: Moment matching failed. Perhaps you did not set 'save_pars = save_pars(all = TRUE)' when fitting your model?
+
+# extra loo calculation for model 95
+model_fit_95 <- build_fit_rstan(combinations_df[95,])
+loo_95 <- build_loo_rstan(model_fit_95)
+# this gives a weird error 
+
+# moment matching: 14 problematic 
+loo_95_mm <- loo(model_fit_95, model_names=c(build_name(combinations_df[95,])), moment_match = TRUE)
+# still 14 obs problematic, recommends kfold()
+
+# k-fold 
+library(future)
+plan(multisession)
+kfold_95 <- kfold(model_fit_95, chains = 1)
+write_rds(kfold_95, here::here("case-studies", "epilepsy", "data", "prelim", "kfold_95_without_obs.rds"))
+
+# integrated loo
+
+model_cmdstanr$init_model_methods()
+
+# get loo 
+tic()
+loos_rstan <- apply(combinations_df, build_loo_rstan)
+toc()
+
+tic()
+test <- combinations_df %>%
+  split(1:nrow(.)) %>%
+  purrr::map(build_loo_rstan)
+toc()
+
+library(future)
+plan(multisession)
+
+tic()
+test <- combinations_df %>%
+  split(1:nrow(.)) %>%
+  furrr::future_map(build_loo_rstan)
 toc()
 
 # moment matching for models with high pareto k's 
 test <- combinations_df[95,]
 build_loo_rstan(test)
 build_loo(test)
+
 # compare models with loo & model averaging weights ####
 comparison_df = loo::loo_compare(loos)
 
-# get pareto k's 
-all_pareto_ks <- purrr::map(loos, ~.x$diagnostics$pareto_k)
-
-get_sum_high_ks <- function(x, ...){
-  # x is a vector of pareto k's
-  result = sum(x > 0.7)
-  return(result)
-}
-
-# Plots: visualise Pareto k's for all models ####
-plot_all_pareto_ks <- tibble(model_name = names(all_pareto_ks), pareto_k = all_pareto_ks) %>%
-  mutate(sum_pareto_k = purrr::map_dbl(pareto_k, get_sum_high_ks)) %>% 
-  arrange(sum_pareto_k) %>%
-  mutate(model_name = forcats::fct_inorder(model_name)) %>%
-  unnest(pareto_k) %>%
-  {ggplot(., aes(x = pareto_k, y = model_name)) + 
-      geom_point(shape = 3, color = "grey20") +
-      geom_vline(xintercept = 0.7) +
-      theme_bw() + 
-      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))}
-
-save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_pareto_ks_epi.png"), 
-          plot_all_pareto_ks, 
-          base_height = 19, 
-          base_aspect_ratio = 1.5)
-
 # get number of model parameters to compare with p_loo ####
-
 comb_df <- comb_df |> 
   mutate(nparams = purrr::map_dbl(model_fit, brms::nvariables))
-
-# get high pareto k's ####
-pareto_ks <- purrr::map(loos, ~.x$diagnostics$pareto_k)
-
-# sum of high pareto k's for each model
-sum_high_pareto_ks <- purrr::map_dbl(pareto_ks, get_sum_high_ks)
-
-high_pareto_ks <- data.frame(sum_high_pareto_ks = as.numeric(sum_high_pareto_ks), row.names = names(sum_high_pareto_ks)) 
 
 # extract pseudo-BMA weights
 pbma_weights = loo_model_weights(loos, method="pseudobma")
