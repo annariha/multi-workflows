@@ -17,7 +17,6 @@ dat <- brms::epilepsy
 comb_df <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_without_obs.rds"))
 loo_df_94_models <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "loo_df_94_models_epi.rds"))
 comb_df_for_plots <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_without_obs_epi.rds"))
-comb_df_for_plots_minimal <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_minimal_without_obs_epi.rds"))
 
 # test 
 # draws_list <- do.call(get_posterior_draws, list(multi_epi$mod_epi))
@@ -144,31 +143,37 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "post_grad_treat_red
           base_height = 22, 
           base_aspect_ratio = 1)
 
-# plotting minimal set of models 
-draws_trt_test_reduced <- purrr::map(comb_df_for_plots$model_fit, ~as_draws_df(.x, variable = "Trt", regex = TRUE))
+# load data 
+comb_df_for_plots_minimal <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_minimal_without_obs_epi.rds"))
+
+# plotting minimal set of models ####
+draws_trt_test_minimal <- purrr::map(comb_df_for_plots_minimal$model_fit, ~as_draws_df(.x, variable = "Trt", regex = TRUE))
 
 # df for plotting a minimal set of models
-test_df_reduced <- comb_df_for_plots |> 
-  mutate(posterior_draws_trt = draws_trt_test_reduced) |>
-  arrange(no_issues, elpd_diff) |>
-  mutate(model_name = forcats::fct_inorder(model_name)) |>
-  select(model_name, no_issues, posterior_draws_trt) |>
+test_df_minimal <- comb_df_for_plots_minimal |> 
+  # mutate(model_name = sapply(strsplit(model_name, ","), "[", 1)) |>
+  # for easier readability: remove full model name and add more generic name ("Model X") 
+  mutate(model_id = paste0("Model ", row_number())) |> 
+  mutate(posterior_draws_trt = draws_trt_test_minimal) |>
+  arrange(elpd_diff) |>
+  mutate(model_id = forcats::fct_inorder(model_id)) |>
+  select(model_id, model_name, no_issues, posterior_draws_trt) |>
   unnest(posterior_draws_trt)
 
 # gradient interval plot of filtered set of models 
-posterior_grad_treat_minimal <- ggplot(test_df_reduced, aes(x = b_Trt1, y = model_name)) + 
+posterior_grad_treat_minimal <- ggplot(test_df_minimal, aes(x = b_Trt1, y = model_id)) + 
   stat_gradientinterval() +
   xlim(-1.15, 0.55) + 
-  scale_y_discrete(expand=c(1, 0)) +
+  #scale_y_discrete(expand=c(0, 0.8)) +
   geom_vline(xintercept = 0, linetype = "dashed") + 
   theme_bw() + 
   theme(axis.title.y = element_blank(),
-        axis.text.y = element_text(size=40),
-        axis.text.x = element_text(size=30),
+        axis.text.y = element_text(size=20),
+        axis.text.x = element_text(size=20),
         axis.title.x = element_blank(),
         legend.position = "none")
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "post_grad_treat_minimal_without_obs_epi.png"), 
           posterior_grad_treat_minimal,
-          base_height = 22, 
-          base_aspect_ratio = 1)
+          base_height = 5, 
+          base_aspect_ratio = 1.5)
