@@ -140,13 +140,13 @@ comb_df  <- comb_df |>
 write_rds(comb_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_without_obs.rds"))
 
 # reduce df for plotting 
-comb_df_for_plots <- comb_df |>
+comb_df_for_plots_filter_comp_issues <- comb_df |>
   filter(div_trans == 0) |>
   filter(rhats_raw < 1.01) |>
   select(model_name, model_fit, visit, div_trans, rhats_raw)
 
 # for plotting 
-write_rds(comb_df_for_plots, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_without_obs.rds"))
+write_rds(comb_df_for_plots_filter_comp_issues, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_filter_comp_issues_without_obs.rds"))
 
 # 1st step: elpd all models ####
 
@@ -183,11 +183,15 @@ loo_df <- tibble(model_name = names(loos), loos = loos) |>
   mutate(sum_high_pareto_ks = purrr::map_dbl(purrr::map(loos, ~.x$diagnostics$pareto_k), get_sum_high_ks))
 
 # all loos with number of bad Pareto k's < 5% of obs 
-loo_df_without_95 <- loo_df |>
+loo_df_without_5 <- loo_df |>
   filter(sum_high_pareto_ks < (NROW(dat) / 100) * 5)
 
-# compare models with loo & model averaging weights for the above models ####
-comparison_df = loo::loo_compare(loo_df_without_95$loos)
+# store intermediate result
+write_rds(full_df, here::here("case-studies", "epilepsy", "data", "prelim", "loo_df_without_5_epi.rds"))
+loo_df_without_5 <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "loo_df_without_5_epi.rds"))
+
+# compare models with loo & model averaging weights for the selected models ####
+comparison_df = loo::loo_compare(loo_df_without_5$loos)
 # add loo comparison table 
 full_df = merge(comb_df, comparison_df, by=0)
 # set row names to model names
@@ -196,7 +200,31 @@ rownames(full_df) <- full_df$Row.names
 full_df = full_df[2:length(full_df)]
 
 # extract pseudo-BMA weights for the above models ####
-pbma_weights = loo_model_weights(loo_df_without_95$loos, method="pseudobma")
+pbma_weights = loo_model_weights(loo_df_without_5$loos, method="pseudobma")
+pbma_df = data.frame(pbma_weight=as.numeric(pbma_weights), row.names=names(pbma_weights))
+full_df = merge(full_df, pbma_df, by=0)
+# set row names to model names (again) 
+rownames(full_df) <- full_df$Row.names
+# select everything despite Row.names
+full_df = full_df[2:length(full_df)]
+
+# store intermediate result
+write_rds(full_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_loo_df_without_95_epi.rds"))
+full_df <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "comb_loo_df_without_95_epi.rds"))
+
+# all loos with number of bda Pareto k's == 0
+
+# compare models with loo & model averaging weights for the selected models ####
+comparison_df = loo::loo_compare(loo_df_without_5$loos)
+# add loo comparison table 
+full_df = merge(comb_df, comparison_df, by=0)
+# set row names to model names
+rownames(full_df) <- full_df$Row.names
+# select everything despite Row.names
+full_df = full_df[2:length(full_df)]
+
+# extract pseudo-BMA weights for the above models ####
+pbma_weights = loo_model_weights(loo_df_without_5$loos, method="pseudobma")
 pbma_df = data.frame(pbma_weight=as.numeric(pbma_weights), row.names=names(pbma_weights))
 full_df = merge(full_df, pbma_df, by=0)
 # set row names to model names (again) 
@@ -210,15 +238,24 @@ full_df <- read_rds(here::here("case-studies", "epilepsy", "data", "prelim", "co
 
 # reduce df for plotting 
 comb_df_for_plots <- full_df |>
-  filter(abs(elpd_diff) < 4) |>
   filter(pbma_weight > 0.01) |>
+  filter(abs(elpd_diff) < 4) |>
   filter(no_issues == 1) |>
   arrange(desc(elpd_diff)) |>
   select(model_name, model_fit, no_issues, elpd_diff, se_diff, pbma_weight)
 
 # for plotting 
 write_rds(comb_df_for_plots, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_without_obs_epi.rds"))
+
 write_rds(comb_df_for_plots, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_for_plots_minimal_without_obs_epi.rds"))
+
+# compute PBMA weights for minimal set of models ####
+loo_df_minimal <- full_df |>
+  filter(pbma_weight > 0.01) |>
+  filter(abs(elpd_diff) < 4) |>
+  filter(no_issues == 1) |>
+pbma_weights_minimal <- loo_model_weights(loo_df_without_95$loos, method="pseudobma")
+pbma_df_minimal = data.frame(pbma_weight=as.numeric(pbma_weights_minimal), row.names=names(pbma_weights_minimal))
 
 # Which models need moment matching (or integrated loo)? ####
 # approx. 5% too high -> 12 or more bad values 
