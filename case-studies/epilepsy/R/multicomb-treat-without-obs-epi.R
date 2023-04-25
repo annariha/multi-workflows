@@ -103,6 +103,12 @@ comb_df <- comb_df |>
     model_fit = apply(combinations_df, 1, build_fit)) 
 toc()
 
+tic()
+test <- combinations_df %>%
+  split(1:nrow(.)) %>%
+  purrr::map(build_fit)
+toc()
+
 # get all modelfits 
 # models <- apply(combinations_df, 1, build_fit)
 
@@ -134,7 +140,7 @@ comb_df <- comb_df |>
 
 # add an indicator for computational issues ####
 comb_df  <- comb_df |>
-  mutate(no_issues = ifelse(div_trans == 0 & rhats_raw < 1.01, 1, 0))
+  mutate(no_issues = ifelse(div_trans == 0 & rhats_raw <= 1.01, 1, 0))
 
 # store comb dataframe to use in other scripts 
 write_rds(comb_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df_without_obs.rds"))

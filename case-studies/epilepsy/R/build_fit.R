@@ -5,7 +5,7 @@ build_fit <- function(row, ...){
     formula = build_brms_formula(row), 
     data = brms::epilepsy, 
     prior = row[["prior"]],
-    file = digest::digest(build_name(row), algo="md5"),
+    file = here::here("case-studies", "epilepsy", "data", "prelim", digest::digest(build_name(row), algo="md5")),
     backend = "cmdstanr", 
     silent = 2, 
     refresh = 0
