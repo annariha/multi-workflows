@@ -40,13 +40,11 @@ datap <- list(N=dim(roaches)[1],
               offsett=log(roaches$exposure2),
               X=roaches[,c('sqrt_roach1','treatment','senior')],
               y=roaches$y)
-
-# sample
-fitpri <- modpri$sample(data = datap, refresh=0, chains=8, parallel_chains=4)
 ```
 
 ```{r}
-
+# sample
+fitpri <- modpri$sample(data = datap, refresh=0, chains=8, parallel_chains=4)
 ```
 
 ```{r}
@@ -73,7 +71,6 @@ head(draws_df)
 # summarise draws
 draws_summary <- posterior::summarise_draws(fitpri) |> as_tibble()
 head(draws_summary)
-
 ```
 
 ```{r expose Stan funs}
@@ -178,23 +175,62 @@ integrate(integrand,
 ```
 
 ```{r}
+# compare the above result to rnorm() with sd=sigmaz_j
+z_norm <- rnorm(100000, sd = sigmaz_j)
+mean(dpois(
+  x = yj, 
+  lambda = exp(z_norm + offsettj_plus_alpha + sum(Xj * t(beta))),
+  log = FALSE))
+```
+
+```{r test sigma small}
 # test case 1: for sigmaz close to zero, compare to dpois() with zs_vec = 0 
-dpois(x = yj, lambda = exp(0 + offsettj_plus_alpha + Xj * beta), log = FALSE)
+sigmaz_zero <- 1e-10
+integrate(integrand, 
+          lower = -(9 * sigmaz_zero), 
+          upper = 9 * sigmaz_zero,
+          muz_j = 0, # random intercept mean (here: 0)
+          sigmaz_j = sigmaz_zero, 
+          yj = yj, 
+          Xj = Xj,
+          offsettj_plus_alpha = offsettj_plus_alpha,
+          beta = beta
+          )
 
+# compare to dpois() with z=0
+dpois(x = yj, lambda = exp(0 + offsettj_plus_alpha + sum(Xj * t(beta))), log = FALSE)
+```
+
+```{r test sigma big}
 # test case 2: for sigmaz big enough, result of integrate() should roughly be the same as mean(dpois()) with zs_vec = rnorm(10000)
+sigmaz_big <- 0.99
+integrate(integrand, 
+          lower = -(9 * sigmaz_big), 
+          upper = 9 * sigmaz_big,
+          muz_j = 0, # random intercept mean (here: 0)
+          sigmaz_j = sigmaz_big, 
+          yj = yj, 
+          Xj = Xj,
+          offsettj_plus_alpha = offsettj_plus_alpha,
+          beta = beta
+          )
 
-zs_vec <- rnorm(10000) # using rnorm() defaults means that we assume sigmaz=1
+# compare to samples from normal distr. and mean(dpois(...)), using rnorm() defaults means that we assume sigmaz=1
+zs_norm <- rnorm(10000) 
 mean(dpois(x = yj, 
-           lambda = exp(zs_vec + offsettj_plus_alpha + Xj * beta),
+           lambda = exp(zs_norm + offsettj_plus_alpha + sum(Xj * t(beta))),
            log = FALSE))
 ```
 
 ```{r}
-# comparing to results using exposed Stan function
+# comparing to results using exposed Stan function ####
 theta <- c(sigmaz_j, offsettj_plus_alpha, beta)
 Xj_row_vec <- t(unlist(Xj))
-udfs$integrand(z, NULL, theta = theta, Xi = Xj_row_vec, yi = yj)
+
+#udfs$integrand(z, NULL, theta = theta, Xi = Xj_row_vec, yi = yj)
+# currently returns: Error: Expecting a single value: [extent=0].
 ```
+
 
 
 
