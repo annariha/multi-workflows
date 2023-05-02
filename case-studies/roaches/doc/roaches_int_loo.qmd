@@ -100,9 +100,8 @@ functions {
 # write integrand function to Stan file 
 integrand_stan_file <- cmdstanr::write_stan_file(code = integrand_stan_code)
 
-# expose integrand function 
+# exposing user-defined functions to access integrand function 
 udfs <- expose_cmdstanr_functions(model_path = integrand_stan_file)
-udfs$integrand()
 ```
 
 ```{r integrand}
@@ -127,7 +126,7 @@ integrand <- function(zs_vec,
   
   # in Stan code: poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
   fit_term <- dpois(x = yj, 
-                    lambda = exp(zs_vec + offsettj_plus_alpha + Xj * beta),
+                    lambda = exp(zs_vec + offsettj_plus_alpha + sum(Xj * t(beta))),
                     log = TRUE)
   
   #dlik(yj, link(zs_vec + linpred_minus_re))
@@ -138,17 +137,65 @@ integrand <- function(zs_vec,
 
 ```
 
-```{r}
+```{r test}
 # test for one iteration and one observation
-z <- as.numeric(unlist(draws_df[1,]$zs)[1])
+
+# random intercept for each obs
+z <- as.numeric(unlist(draws_df[1,]$zs)[1]) 
 muz_j <- 0
-sigmaz_j <- unlist(draws_df[1,]$sigmaz)
-yj <- as.numeric(roaches$y[1])
+
+# scale for z 
+sigmaz_j <- unlist(draws_df[1,]$sigmaz) 
+
+# target
+yj <- as.numeric(roaches$y[1]) 
+
+# covariates
 Xj <- roaches[1,c('sqrt_roach1','treatment','senior')]
 offsettj_plus_alpha <- log(roaches$exposure2[1]) + unlist(draws_df[1,]$alpha)
-beta <- draws_df[1,]$beta
-linpred_minus_ri <- offsettj_plus_alpha + Xj * beta
+beta <- unlist(draws_df[1,]$beta)
+
+# linear pred for one iteration and one observation
+linpred_minus_ri <- offsettj_plus_alpha + sum(Xj * t(beta))
+linpred <- z + offsettj_plus_alpha + sum(Xj * t(beta))
+
+# model prediction, applying exp() link function 
+exp(linpred)
+```
+
+```{r evaluate integral}
+# evaluate integral ####
+integrate(integrand, 
+          lower = -(9 * sigmaz_j), 
+          upper = 9 * sigmaz_j,
+          muz_j = 0, # random intercept mean (here: 0)
+          sigmaz_j = sigmaz_j, 
+          yj = yj, 
+          Xj = Xj,
+          offsettj_plus_alpha = offsettj_plus_alpha,
+          beta = beta
+          )
 ```
 
 ```{r}
+# test case 1: for sigmaz close to zero, compare to dpois() with zs_vec = 0 
+dpois(x = yj, lambda = exp(0 + offsettj_plus_alpha + Xj * beta), log = FALSE)
+
+# test case 2: for sigmaz big enough, result of integrate() should roughly be the same as mean(dpois()) with zs_vec = rnorm(10000)
+
+zs_vec <- rnorm(10000) # using rnorm() defaults means that we assume sigmaz=1
+mean(dpois(x = yj, 
+           lambda = exp(zs_vec + offsettj_plus_alpha + Xj * beta),
+           log = FALSE))
 ```
+
+```{r}
+# comparing to results using exposed Stan function
+theta <- c(sigmaz_j, offsettj_plus_alpha, beta)
+Xj_row_vec <- t(unlist(Xj))
+udfs$integrand(z, NULL, theta = theta, Xi = Xj_row_vec, yi = yj)
+```
+
+
+
+
