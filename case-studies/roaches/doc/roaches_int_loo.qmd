@@ -1,0 +1,108 @@
+---
+title: "Integrated loo for roaches example"
+author: Anna Elisabeth Riha
+format: html
+---
+
+```{r setup, include=FALSE} 
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r}
+# setup ####
+library(rstanarm)
+library(brms)
+library(cmdstanr)
+options(mc.cores = parallel::detectCores())
+library(loo)
+library(ggplot2)
+library(bayesplot)
+theme_set(bayesplot::theme_default(base_family = "sans"))
+library(tidyverse)
+```
+
+```{r}
+# load data
+data(roaches)
+# Roach1 is very skewed and we take a square root
+roaches$sqrt_roach1 <- sqrt(roaches$roach1)
+# stan file
+poisson_re_int <- here::here("case-studies", "roaches", "Stan", "poisson_re_integrate.stan")
+```
+
+```{r}
+# compile model
+modpri <- cmdstanr::cmdstan_model(stan_file = poisson_re_int)
+
+# prepare data
+datap <- list(N=dim(roaches)[1], 
+              P=3,
+              offsett=log(roaches$exposure2),
+              X=roaches[,c('sqrt_roach1','treatment','senior')],
+              y=roaches$y)
+
+# sample
+fitpri <- modpri$sample(data = datap, refresh=0, chains=8, parallel_chains=4)
+```
+
+```{r}
+# summarise draws
+draws_summary <- posterior::summarise_draws(fitpri) |> as_tibble()
+head(draws_summary)
+
+# get draws
+draws_df <- fitpri$draws(format = "data.frame") |>
+  as_tibble() 
+
+# reformat draws to combine z's (and beta's) as vectors for each iteration in each chain
+draws_df <- draws_df |> 
+  select(-matches("log_lik")) |>
+  tidyr::nest(zs = starts_with("z"),
+              sigmaz = matches("sigmaz"),
+              alpha = matches("alpha"),
+              beta = matches("beta")) |>
+  mutate(zs = map(zs, unlist),
+         sigmaz = map(sigmaz, ~matrix(unlist(.x), ncol = 1)),
+         alpha = map(alpha, ~matrix(unlist(.x), ncol = 1)),
+         beta = map(beta, ~matrix(unlist(.x), ncol = 3)))
+
+head(draws_df)
+```
+
+```{r}
+# expose Stan functions
+#modpri <- cmdstanr::cmdstan_model(stan_file = poisson_re_int, compile_standalone = TRUE)
+#modpri$expose_functions(global = TRUE)
+#modpri$functions
+
+# using code from https://rok-cesnovar.github.io/misc/exposing_cmdstanr_udf.html
+source(here::here("case-studies", "roaches", "R", "expose_cmdstanr_functions.R"))
+
+integrand_stan_code <- "
+functions {
+  real integrand(real z, real notused, array[] real theta, array[] real Xi, array[] int yi) {
+      real sigmaz = theta[1];
+      real offsetti_plus_alpha = theta[2]; 
+      int ntheta = num_elements(theta);
+      vector[ntheta-2] beta = to_vector(theta[3:ntheta]);
+      return exp(normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta));
+  }
+}
+"
+
+# write integrand function to Stan file 
+integrand_stan_file <- cmdstanr::write_stan_file(code = integrand_stan_code)
+
+# expose integrand function 
+udfs <- expose_cmdstanr_functions(model_path = integrand_stan_file)
+udfs$integrand()
+```
+
+```{r}
+```
+
+```{r}
+```
+
+```{r}
+```
