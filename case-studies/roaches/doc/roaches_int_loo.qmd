@@ -1,6 +1,6 @@
 ---
 title: "Integrated loo for roaches example"
-author: Anna Elisabeth Riha
+author: Anna Elisabeth Riha, Aki Vehtari
 format: html
 ---
 
@@ -46,10 +46,10 @@ fitpri <- modpri$sample(data = datap, refresh=0, chains=8, parallel_chains=4)
 ```
 
 ```{r}
-# summarise draws
-draws_summary <- posterior::summarise_draws(fitpri) |> as_tibble()
-head(draws_summary)
 
+```
+
+```{r}
 # get draws
 draws_df <- fitpri$draws(format = "data.frame") |>
   as_tibble() 
@@ -70,6 +70,13 @@ head(draws_df)
 ```
 
 ```{r}
+# summarise draws
+draws_summary <- posterior::summarise_draws(fitpri) |> as_tibble()
+head(draws_summary)
+
+```
+
+```{r expose Stan funs}
 # expose Stan functions
 #modpri <- cmdstanr::cmdstan_model(stan_file = poisson_re_int, compile_standalone = TRUE)
 #modpri$expose_functions(global = TRUE)
@@ -98,10 +105,49 @@ udfs <- expose_cmdstanr_functions(model_path = integrand_stan_file)
 udfs$integrand()
 ```
 
-```{r}
+```{r integrand}
+# define integrand as function  ####
+# in Stan code: normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
+integrand <- function(zs_vec, 
+                      muz_j, 
+                      sigmaz_j,
+                      yj, 
+                      Xj,
+                      offsettj_plus_alpha,
+                      beta){
+  
+  # function defines integrand for integrate()
+  # combines prior on obs-level random effect z and likelihood
+  
+  # in Stan code: normal_lpdf(z|0,sigmaz)
+  z_term <- dnorm(zs_vec,
+                  mean = muz_j, 
+                  sd = sigmaz_j,
+                  log = TRUE)
+  
+  # in Stan code: poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
+  fit_term <- dpois(x = yj, 
+                    lambda = exp(zs_vec + offsettj_plus_alpha + Xj * beta),
+                    log = TRUE)
+  
+  #dlik(yj, link(zs_vec + linpred_minus_re))
+  
+  result = exp(z_term + fit_term)
+  return(result)
+}
+
 ```
 
 ```{r}
+# test for one iteration and one observation
+z <- as.numeric(unlist(draws_df[1,]$zs)[1])
+muz_j <- 0
+sigmaz_j <- unlist(draws_df[1,]$sigmaz)
+yj <- as.numeric(roaches$y[1])
+Xj <- roaches[1,c('sqrt_roach1','treatment','senior')]
+offsettj_plus_alpha <- log(roaches$exposure2[1]) + unlist(draws_df[1,]$alpha)
+beta <- draws_df[1,]$beta
+linpred_minus_ri <- offsettj_plus_alpha + Xj * beta
 ```
 
 ```{r}
