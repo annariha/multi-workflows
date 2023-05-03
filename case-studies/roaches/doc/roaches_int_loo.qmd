@@ -43,6 +43,7 @@ datap <- list(N=dim(roaches)[1],
 ```
 
 ```{r}
+#| include: false
 # sample
 fitpri <- modpri$sample(data = datap, refresh=0, chains=8, parallel_chains=4)
 ```
@@ -101,7 +102,7 @@ integrand_stan_file <- cmdstanr::write_stan_file(code = integrand_stan_code)
 udfs <- expose_cmdstanr_functions(model_path = integrand_stan_file)
 ```
 
-```{r integrand}
+```{r integrand one iter one obs}
 # define integrand as function  ####
 # in Stan code: normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
 integrand <- function(zs_vec, 
@@ -134,7 +135,46 @@ integrand <- function(zs_vec,
 
 ```
 
-```{r test}
+```{r test sigma small}
+# test case 1: for sigmaz close to zero, compare to dpois() with zs_vec = 0 
+sigmaz_zero <- 1e-10
+integrate(integrand, 
+          lower = -(9 * sigmaz_zero), 
+          upper = 9 * sigmaz_zero,
+          muz_j = 0, # random intercept mean (here: 0)
+          sigmaz_j = sigmaz_zero, 
+          yj = yj, 
+          Xj = Xj,
+          offsettj_plus_alpha = offsettj_plus_alpha,
+          beta = beta
+          )
+
+# compare to dpois() with z=0
+dpois(x = yj, lambda = exp(0 + offsettj_plus_alpha + sum(Xj * t(beta))), log = FALSE)
+```
+
+```{r test sigma big}
+# test case 2: for sigmaz big enough, result of integrate() should roughly be the same as mean(dpois()) with zs_vec = rnorm(10000)
+sigmaz_big <- 0.99
+integrate(integrand, 
+          lower = -(9 * sigmaz_big), 
+          upper = 9 * sigmaz_big,
+          muz_j = 0, # random intercept mean (here: 0)
+          sigmaz_j = sigmaz_big, 
+          yj = yj, 
+          Xj = Xj,
+          offsettj_plus_alpha = offsettj_plus_alpha,
+          beta = beta
+          )
+
+# compare to samples from normal distr. and mean(dpois(...)), using rnorm() defaults means that we assume sigmaz=1
+zs_norm <- rnorm(10000) 
+mean(dpois(x = yj, 
+           lambda = exp(zs_norm + offsettj_plus_alpha + sum(Xj * t(beta))),
+           log = FALSE))
+```
+
+```{r test one obs one iter}
 # test for one iteration and one observation
 
 # random intercept for each obs
@@ -183,43 +223,79 @@ mean(dpois(
   log = FALSE))
 ```
 
-```{r test sigma small}
-# test case 1: for sigmaz close to zero, compare to dpois() with zs_vec = 0 
-sigmaz_zero <- 1e-10
-integrate(integrand, 
-          lower = -(9 * sigmaz_zero), 
-          upper = 9 * sigmaz_zero,
-          muz_j = 0, # random intercept mean (here: 0)
-          sigmaz_j = sigmaz_zero, 
-          yj = yj, 
-          Xj = Xj,
-          offsettj_plus_alpha = offsettj_plus_alpha,
-          beta = beta
-          )
+```{r integrand one iter}
+# define integrand as function ####
+integrand_iter <- function(zs_vec, 
+                      muz_j, 
+                      sigmaz_j,
+                      y, 
+                      X,
+                      offsett_plus_alpha,
+                      beta){
+  
+  # function defines integrand for integrate()
+  # combines prior on obs-level random effect z and likelihood
+  
+  z_term <- dnorm(zs_vec,
+                  mean = muz_j, 
+                  sd = sigmaz_j,
+                  log = TRUE)
+  
+  fit_term <- dpois(x = y, 
+                    lambda = exp(zs_vec + offsett_plus_alpha + rowSums(X * beta)),
+                    log = TRUE)
+  
+  result = exp(z_term + fit_term)
+  return(result)
+}
 
-# compare to dpois() with z=0
-dpois(x = yj, lambda = exp(0 + offsettj_plus_alpha + sum(Xj * t(beta))), log = FALSE)
 ```
 
-```{r test sigma big}
-# test case 2: for sigmaz big enough, result of integrate() should roughly be the same as mean(dpois()) with zs_vec = rnorm(10000)
-sigmaz_big <- 0.99
-integrate(integrand, 
-          lower = -(9 * sigmaz_big), 
-          upper = 9 * sigmaz_big,
+```{r test one iter}
+# test for one iteration 
+# vector of random intercept for each obs
+zs_vec <- as.numeric(unlist(draws_df[1,]$zs)) 
+muz_j <- 0
+
+# scale for z 
+sigmaz_j <- unlist(draws_df[1,]$sigmaz) 
+
+# targets
+y <- as.numeric(roaches$y) 
+
+# covariates
+X <- roaches[,c('sqrt_roach1','treatment','senior')]
+offsett_plus_alpha <- log(roaches$exposure2) + unlist(draws_df[1,]$alpha)
+beta <- unlist(draws_df[1,]$beta)
+
+# linear pred for one iteration
+linpreds_minus_ri <- offsett_plus_alpha + rowSums(X * beta)
+linpreds <- zs_vec + offsett_plus_alpha + rowSums(X * beta)
+
+# model prediction, applying exp() link function 
+exp(linpreds)
+```
+
+```{r evaluate integral}
+# evaluate integral ####
+integrate(integrand_iter, 
+          lower = -(9 * sigmaz_j), 
+          upper = 9 * sigmaz_j,
           muz_j = 0, # random intercept mean (here: 0)
-          sigmaz_j = sigmaz_big, 
-          yj = yj, 
-          Xj = Xj,
-          offsettj_plus_alpha = offsettj_plus_alpha,
+          sigmaz_j = sigmaz_j, 
+          yj = y, 
+          Xj = X,
+          offsettj_plus_alpha = offsett_plus_alpha,
           beta = beta
           )
 
-# compare to samples from normal distr. and mean(dpois(...)), using rnorm() defaults means that we assume sigmaz=1
-zs_norm <- rnorm(10000) 
-mean(dpois(x = yj, 
-           lambda = exp(zs_norm + offsettj_plus_alpha + sum(Xj * t(beta))),
-           log = FALSE))
+# test
+# compare the above result to rnorm() with sd=sigmaz_j
+z_norm <- rnorm(100000, sd = sigmaz_j)
+mean(dpois(
+  x = yj, 
+  lambda = exp(z_norm + offsett_plus_alpha + rowSums(X * beta)),
+  log = FALSE))
 ```
 
 ```{r}
