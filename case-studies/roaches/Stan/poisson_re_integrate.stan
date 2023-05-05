@@ -41,8 +41,8 @@ generated quantities {
   vector[N] log_lik;
   for (i in 1:N) {
     // for debugging
-    //print("loop iteration: ", n);
-    //print("values:", sigmaz, offsett[i], alpha, beta, X[i,], y[i]);
+    //print("loop iteration: ", i);
+    //print("sigmaz: ", sigmaz, " offset: ", offsett[i], " alpha: ", alpha, " beta: ", beta, " Xi: ", X[i,],  " yi: ", y[i]);
     // z as posterior draws, this would be challenging for PSIS-LOO (and WAIC)
     // log_lik[i] = poisson_log_glm_lpmf({y[i]} | X[i,], z[i]+offsett[i]+alpha, beta);
     // we can integrate each z[i] out with 1D adaptive quadrature 
@@ -51,8 +51,11 @@ generated quantities {
                               9 * sigmaz,
                               append_array({sigmaz}, append_array({offsett[i]+alpha}, to_array_1d(beta))),
                   to_array_1d(X[i,]),
-                  {y[i]}
+                  {y[i]},
+                  2 * sqrt(machine_precision()) // increase relative tolerance, default=sqrt(machine_precision())
                   )
                   );
+     // for debugging
+     //print("loglik_", i, ":", log_lik[i]);
   }
 }
