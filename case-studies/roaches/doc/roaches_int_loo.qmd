@@ -19,6 +19,7 @@ library(ggplot2)
 library(bayesplot)
 theme_set(bayesplot::theme_default(base_family = "sans"))
 library(tidyverse)
+library(tictoc)
 ```
 
 ```{r}
@@ -45,7 +46,7 @@ datap <- list(N=dim(roaches)[1],
 ```{r}
 #| include: false
 # sample
-fitpri <- modpri$sample(data = datap, refresh=0, chains=8, parallel_chains=4)
+fitpri <- modpri$sample(data = datap, refresh=0, iter_warmup = 50, iter_sampling = 50, chains=1, parallel_chains=4)
 ```
 
 ```{r}
@@ -54,18 +55,28 @@ draws_df <- fitpri$draws(format = "data.frame") |>
   as_tibble() 
 
 # reformat draws to combine z's (and beta's) as vectors for each iteration in each chain
-draws_df <- draws_df |> 
+input_df <- draws_df |> 
   select(-matches("log_lik")) |>
   tidyr::nest(zs = starts_with("z"),
               sigmaz = matches("sigmaz"),
               alpha = matches("alpha"),
               beta = matches("beta")) |>
   mutate(zs = map(zs, unlist),
-         sigmaz = map(sigmaz, ~matrix(unlist(.x), ncol = 1)),
-         alpha = map(alpha, ~matrix(unlist(.x), ncol = 1)),
+         sigmaz = map_dbl(sigmaz, ~matrix(unlist(.x), ncol = 1)),
+         alpha = map_dbl(alpha, ~matrix(unlist(.x), ncol = 1)),
          beta = map(beta, ~matrix(unlist(.x), ncol = 3)))
 
-head(draws_df)
+head(input_df)
+```
+```{r}
+input_df_test <- input_df |> 
+  rowwise() |> 
+  mutate(testi = list(pmap_dbl(list(zs, alpha), function(zs, alpha, ...) zs + alpha)))
+
+head(input_df_test)
+
+unlist(input_df_test[1,]$zs)[1]
+unlist(input_df_test[1,]$testi)[1]
 ```
 
 ```{r}
@@ -74,60 +85,54 @@ draws_summary <- posterior::summarise_draws(fitpri) |> as_tibble()
 head(draws_summary)
 ```
 
-```{r expose Stan funs}
-# expose Stan functions
-#modpri <- cmdstanr::cmdstan_model(stan_file = poisson_re_int, compile_standalone = TRUE)
-#modpri$expose_functions(global = TRUE)
-#modpri$functions
+# get linear predictor without random effect
 
-# using code from https://rok-cesnovar.github.io/misc/exposing_cmdstanr_udf.html
-source(here::here("case-studies", "roaches", "R", "expose_cmdstanr_functions.R"))
-
-integrand_stan_code <- "
-functions {
-  real integrand(real z, real notused, array[] real theta, array[] real Xi, array[] int yi) {
-      real sigmaz = theta[1];
-      real offsetti_plus_alpha = theta[2]; 
-      int ntheta = num_elements(theta);
-      vector[ntheta-2] beta = to_vector(theta[3:ntheta]);
-      return exp(normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta));
-  }
+```{r}
+get_linpred_roaches <- function(alpha, beta, offset, covariates){
+  linpreds_minus_re = offset + alpha + rowSums(covariates * unlist(beta))
+  return(linpreds_minus_re)
 }
-"
 
-# write integrand function to Stan file 
-integrand_stan_file <- cmdstanr::write_stan_file(code = integrand_stan_code)
+#linpred_one <- get_linpred_roaches(
+#  alpha = input_df[1,]$alpha, 
+#  beta = input_df[1,]$beta,
+#  offset = log(roaches$exposure2), 
+#  covariates = roaches[,c('sqrt_roach1','treatment','senior')]
+#  )
 
-# exposing user-defined functions to access integrand function 
-udfs <- expose_cmdstanr_functions(model_path = integrand_stan_file)
+input_df <- input_df |>
+  mutate(linpreds_minus_re = pmap(list(alpha, beta),
+                         get_linpred_roaches, 
+                         offset = log(roaches$exposure2), 
+                         covariates = roaches[,c('sqrt_roach1','treatment','senior')]))
 ```
 
-```{r integrand one iter one obs}
+# Evaluate integral with `integrate()`
+
+Instead of including `offsettj_plus_alpha`, `Xj`, and `beta`, we combine them into `linpred_minus_re` beforehand. The idea is to use `brms::posterior_linpred()` lateron. 
+
+```{r integrand with linpred}
 # define integrand as function  ####
 # in Stan code: normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
-integrand <- function(zs_vec, 
-                      muz_j, 
-                      sigmaz_j,
-                      yj, 
-                      Xj,
-                      offsettj_plus_alpha,
-                      beta){
+integrand_linpred <- function(zs, 
+                              muz,
+                              sigmaz,
+                              y, 
+                              linpreds_minus_re){
   
   # function defines integrand for integrate()
   # combines prior on obs-level random effect z and likelihood
-  
+
   # in Stan code: normal_lpdf(z|0,sigmaz)
-  z_term <- dnorm(zs_vec,
-                  mean = muz_j, 
-                  sd = sigmaz_j,
+  z_term <- dnorm(zs,
+                  mean = muz, 
+                  sd = sigmaz,
                   log = TRUE)
-  
+    
   # in Stan code: poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
-  fit_term <- dpois(x = yj, 
-                    lambda = exp(zs_vec + offsettj_plus_alpha + sum(Xj * t(beta))),
+  fit_term <- dpois(x = y, 
+                    lambda = exp(zs + linpreds_minus_re),
                     log = TRUE)
-  
-  #dlik(yj, link(zs_vec + linpred_minus_re))
   
   result = exp(z_term + fit_term)
   return(result)
@@ -135,91 +140,191 @@ integrand <- function(zs_vec,
 
 ```
 
-```{r test sigma small}
-# test case 1: for sigmaz close to zero, compare to dpois() with zs_vec = 0 
-sigmaz_zero <- 1e-10
-integrate(integrand, 
-          lower = -(9 * sigmaz_zero), 
-          upper = 9 * sigmaz_zero,
-          muz_j = 0, # random intercept mean (here: 0)
-          sigmaz_j = sigmaz_zero, 
-          yj = yj, 
-          Xj = Xj,
-          offsettj_plus_alpha = offsettj_plus_alpha,
-          beta = beta
-          )
+# add integrands for each iteration and observation
 
-# compare to dpois() with z=0
-dpois(x = yj, lambda = exp(0 + offsettj_plus_alpha + sum(Xj * t(beta))), log = FALSE)
+```{r}
+input_df <- input_df |>
+  mutate(integrands = pmap(list(zs, sigmaz, linpreds_minus_re),
+                           integrand_linpred,
+                           muz = 0,
+                           y = as.numeric(roaches$y)))
 ```
 
-```{r test sigma big}
-# test case 2: for sigmaz big enough, result of integrate() should roughly be the same as mean(dpois()) with zs_vec = rnorm(10000)
-sigmaz_big <- 0.99
-integrate(integrand, 
-          lower = -(9 * sigmaz_big), 
-          upper = 9 * sigmaz_big,
-          muz_j = 0, # random intercept mean (here: 0)
-          sigmaz_j = sigmaz_big, 
-          yj = yj, 
-          Xj = Xj,
-          offsettj_plus_alpha = offsettj_plus_alpha,
-          beta = beta
-          )
+# evaluate integral
 
-# compare to samples from normal distr. and mean(dpois(...)), using rnorm() defaults means that we assume sigmaz=1
-zs_norm <- rnorm(10000) 
-mean(dpois(x = yj, 
-           lambda = exp(zs_norm + offsettj_plus_alpha + sum(Xj * t(beta))),
-           log = FALSE))
+```{r testing integral linpred}
+# test
+# one value 
+integrand_linpred(zs = as.numeric(unlist(input_df[1,]$zs)[1]), 
+                  muz = 0,
+                  sigmaz = input_df[1,]$sigmaz, 
+                  y = as.numeric(roaches$y[1]),
+                  linpreds_minus_re = unlist(input_df[1,]$linpreds)[1])
+
+# evaluate integral for one value
+integrate(integrand_linpred, 
+          lower = -(9 * input_df[1,]$sigmaz), 
+          upper = 9 * input_df[1,]$sigmaz,
+          muz = 0,
+          sigmaz = input_df[1,]$sigmaz, 
+          y = as.numeric(roaches$y[1]),
+          linpreds_minus_re = unlist(input_df[1,]$linpreds)[1])
+
+# 262 values
+integrand_linpred(z_vec = as.numeric(unlist(input_df[1,]$zs)), 
+                  muz_j = 0,
+                  sigmaz_j = input_df[1,]$sigmaz, 
+                  y_j = as.numeric(roaches$y),
+                  linpred_j_minus_re = unlist(input_df[1,]$linpreds))
+
 ```
 
-```{r test one obs one iter}
-# test for one iteration and one observation
+# get log_lik values with nested for-loop
 
-# random intercept for each obs
-z <- as.numeric(unlist(draws_df[1,]$zs)[1]) 
-muz_j <- 0
+```{r loglik via for loop}
+# get log_lik values with nested for loop
+# this takes quite a while (roughly 8 mins)
+# add stop.on.error=FALSE to avoid stopping when "Integral is probably divergent" 
 
-# scale for z 
-sigmaz_j <- unlist(draws_df[1,]$sigmaz) 
+log_lik <- matrix(data=NA, nrow = 8000, ncol = 262)
 
-# target
-yj <- as.numeric(roaches$y[1]) 
-
-# covariates
-Xj <- roaches[1,c('sqrt_roach1','treatment','senior')]
-offsettj_plus_alpha <- log(roaches$exposure2[1]) + unlist(draws_df[1,]$alpha)
-beta <- unlist(draws_df[1,]$beta)
-
-# linear pred for one iteration and one observation
-linpred_minus_ri <- offsettj_plus_alpha + sum(Xj * t(beta))
-linpred <- z + offsettj_plus_alpha + sum(Xj * t(beta))
-
-# model prediction, applying exp() link function 
-exp(linpred)
+tic()
+for (i in seq(NROW(input_df))){
+  for (j in seq(NROW(roaches))){
+    #print(i)
+    #print(j)
+    sigmaz <- input_df[i,]$sigmaz
+    linpreds_minus_re <- unlist(input_df[i,]$linpreds_minus_re)[j]
+    y = as.numeric(roaches$y)[j]
+    #print(paste0("Iteration: ", i, " sigmaz: ", sigmaz, " linpreds: ", linpreds_minus_re, " y: ", y))
+    log_lik[i,j] <- log(integrate(integrand_linpred, 
+                           lower = -(7 * sigmaz),
+                           upper = 7 * sigmaz,
+                           muz = 0,
+                           sigmaz = sigmaz, 
+                           y = y,
+                           linpreds_minus_re = linpreds_minus_re,
+                           stop.on.error = FALSE)$value)
+    }
+}
+toc()
 ```
 
-```{r evaluate integral}
-# evaluate integral ####
-integrate(integrand, 
-          lower = -(9 * sigmaz_j), 
-          upper = 9 * sigmaz_j,
-          muz_j = 0, # random intercept mean (here: 0)
-          sigmaz_j = sigmaz_j, 
-          yj = yj, 
-          Xj = Xj,
-          offsettj_plus_alpha = offsettj_plus_alpha,
-          beta = beta
-          )
+# Speed up with Gauss Hermite quadrature
+
+```{r integrand for gauss hermite}
+# define integrand as function  ####
+# in Stan code: normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
+integrand_ghq <- function(zs, 
+                          y, 
+                          linpreds_minus_re){
+  
+  # function defines integrand for integrate()
+  # combines prior on obs-level random effect z and likelihood
+    
+  # in Stan code: poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta)
+  fit_term <- dpois(x = y, 
+                    lambda = exp(zs + linpreds_minus_re))
+  
+  result = fit_term
+  return(result)
+}
+```
+
+```{r testing gauss hermite}
+library(spatstat)
+
+gauss.hermite(integrand_ghq, mu = 0, sd = 1, y = 1, linpreds_minus_re = 2, order = 10)
+
+# compare to integrate()
+integrate(integrand_linpred, 
+          lower = -(7 * 1),
+          upper = 7 * 1,
+          muz = 0,
+          sigmaz = 1, 
+          y = 1,
+          linpreds_minus_re = 2,
+          stop.on.error = FALSE)$value
+```
+
+# WIP: evaluate integral with rowwise mapping
+
+```{r}
+
+get_loglik_obswise <- function(sigmaz, linpreds_minus_re, y){
+  #sigmaz <- input_df[i,]$sigmaz
+  #linpreds_minus_re <- unlist(input_df[i,]$linpreds_minus_re)[j]
+  #y = as.numeric(roaches$y)[j]
+  #print(paste0("Iteration: ", i, " sigmaz: ", sigmaz, " linpreds: ", linpreds_minus_re, " y: ", y))
+  log_lik[i,j] <- integrate(integrand_linpred, 
+                           lower = -(7 * sigmaz),
+                           upper = 7 * sigmaz,
+                           muz = 0,
+                           sigmaz = sigmaz, 
+                           y = y,
+                           linpreds_minus_re = linpreds_minus_re,
+                           stop.on.error = FALSE)$value
+  
+}
+
+#input_df <- input_df |>
+#  rowwise() |>
+  
 ```
 
 ```{r}
+# evaluate integral for 262 values
+# https://stackoverflow.com/questions/15921090/r-integrate-at-each-point-of-array
+evaluate_integral <- function(fun, sigmaz, y, linpreds_minus_re){
+  return( integrate(fun, 
+                    lower = -(9 * sigmaz),
+                    upper = 9 * sigmaz,
+                    muz = 0,
+                    sigmaz = sigmaz, 
+                    y = y,
+                    linpreds_minus_re = linpreds_minus_re)
+          )
+}
+```
+
+```{r}
+input_df <- input_df |> 
+  mutate(y = list(as.numeric(roaches$y)))
+
+test_row <- input_df[1,]
+
+evaluate_integral(
+  integrand_linpred, 
+  sigmaz = test_row$sigmaz, 
+  y = unlist(test_row$y)[1], 
+  linpred_minus_re = unlist(test_row$linpreds_minus_re)[1])
+
+linpred_minus_re = unlist(input_df[1,]$linpreds)
+
+sapply(input_df[1,]$zs, function(z_vec) evaluate_integral(integrand_linpred, z_vec))
+
+test_row <- input_df[1,] |>
+  mutate(log_lik = pmap(list(zs, sigmaz, linpreds), 
+                            evaluate_integral, 
+                            fun = integrand_linpred,
+                            y = as.numeric(roaches$y)))
+
+sapply(test_row, function() evaluate_integral(test_row))
+
+integrate(integrand_linpred, 
+          lower = -(9 * input_df[1,]$sigmaz), 
+          upper = 9 * input_df[1,]$sigmaz,
+          muz_j = rep(0, 262),
+          sigmaz_j = rep(input_df[1,]$sigmaz, 262), 
+          y_j = as.numeric(roaches$y),
+          linpred_j_minus_re = unlist(input_df[1,]$linpreds))
+
+# test
 # compare the above result to rnorm() with sd=sigmaz_j
-z_norm <- rnorm(100000, sd = sigmaz_j)
+z_norm <- rnorm(100000, sd =  input_df[1,]$sigmaz)
 mean(dpois(
-  x = yj, 
-  lambda = exp(z_norm + offsettj_plus_alpha + sum(Xj * t(beta))),
+  x = as.numeric(roaches$y[1]), 
+  lambda = exp(z_norm + unlist(input_df[1,]$linpreds)[1]),
   log = FALSE))
 ```
 
@@ -255,14 +360,14 @@ integrand_iter <- function(zs_vec,
 # test for one iteration 
 # vector of random intercept for each obs
 zs_vec <- as.numeric(unlist(draws_df[1,]$zs)) 
-muz_j <- 0
-
 # scale for z 
-sigmaz_j <- unlist(draws_df[1,]$sigmaz) 
+sigmaz <- unlist(draws_df[1,]$sigmaz) 
 
 # targets
 y <- as.numeric(roaches$y) 
 
+# linpred without random effect 
+linpred_
 # covariates
 X <- roaches[,c('sqrt_roach1','treatment','senior')]
 offsett_plus_alpha <- log(roaches$exposure2) + unlist(draws_df[1,]$alpha)
@@ -276,26 +381,35 @@ linpreds <- zs_vec + offsett_plus_alpha + rowSums(X * beta)
 exp(linpreds)
 ```
 
-```{r evaluate integral}
-# evaluate integral ####
-integrate(integrand_iter, 
-          lower = -(9 * sigmaz_j), 
-          upper = 9 * sigmaz_j,
-          muz_j = 0, # random intercept mean (here: 0)
-          sigmaz_j = sigmaz_j, 
-          yj = y, 
-          Xj = X,
-          offsettj_plus_alpha = offsett_plus_alpha,
-          beta = beta
-          )
 
-# test
-# compare the above result to rnorm() with sd=sigmaz_j
-z_norm <- rnorm(100000, sd = sigmaz_j)
-mean(dpois(
-  x = yj, 
-  lambda = exp(z_norm + offsett_plus_alpha + rowSums(X * beta)),
-  log = FALSE))
+# Compare to exposed Stan function
+
+```{r expose Stan funs}
+# expose Stan functions
+modpri <- cmdstanr::cmdstan_model(stan_file = poisson_re_int, force_recompile=TRUE, compile_standalone = TRUE)
+#modpri$expose_functions(global = TRUE)
+#modpri$functions
+
+# using code from https://rok-cesnovar.github.io/misc/exposing_cmdstanr_udf.html
+source(here::here("case-studies", "roaches", "R", "expose_cmdstanr_functions.R"))
+
+integrand_stan_code <- "
+functions {
+  real integrand(real z, real notused, array[] real theta, array[] real Xi, array[] int yi) {
+      real sigmaz = theta[1];
+      real offsetti_plus_alpha = theta[2]; 
+      int ntheta = num_elements(theta);
+      vector[ntheta-2] beta = to_vector(theta[3:ntheta]);
+      return exp(normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta));
+  }
+}
+"
+
+# write integrand function to Stan file 
+integrand_stan_file <- cmdstanr::write_stan_file(code = integrand_stan_code)
+
+# exposing user-defined functions to access integrand function 
+udfs <- expose_cmdstanr_functions(model_path = integrand_stan_file)
 ```
 
 ```{r}
@@ -306,8 +420,4 @@ Xj_row_vec <- t(unlist(Xj))
 #udfs$integrand(z, NULL, theta = theta, Xi = Xj_row_vec, yi = yj)
 # currently returns: Error: Expecting a single value: [extent=0].
 ```
-
-
-
-
 
