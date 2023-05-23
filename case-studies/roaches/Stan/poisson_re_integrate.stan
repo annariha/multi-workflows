@@ -5,13 +5,11 @@ functions {
     real z, 
     real notused, 
     array[] real theta, 
-    array[] real Xi,
+    array[] real also_notused,
     array[] int yi) {
       real sigmaz = theta[1];
-      real offsetti_plus_alpha = theta[2]; 
-      int ntheta = num_elements(theta);
-      vector[ntheta-2] beta = to_vector(theta[3:ntheta]);
-      return exp(normal_lpdf(z|0,sigmaz)+poisson_log_glm_lpmf(yi | to_row_vector(Xi), z+offsetti_plus_alpha, beta));
+      real linpred_minus_re = theta[2]; 
+      return exp(normal_lpdf(z|0,sigmaz)+poisson_log_lpmf(yi[1] | linpred_minus_re+z));
   }
 }
 data {
@@ -47,12 +45,12 @@ generated quantities {
     // log_lik[i] = poisson_log_glm_lpmf({y[i]} | X[i,], z[i]+offsett[i]+alpha, beta);
     // we can integrate each z[i] out with 1D adaptive quadrature 
     log_lik[i] = log(integrate_1d(integrand,
-                              -9 * sigmaz,
-                              9 * sigmaz,
-                              append_array({sigmaz}, append_array({offsett[i]+alpha}, to_array_1d(beta))),
-                  to_array_1d(X[i,]),
-                  {y[i]},
-                  2 * sqrt(machine_precision()) // increase relative tolerance, default=sqrt(machine_precision())
+                              negative_infinity(),
+                              positive_infinity(),
+                              {sigmaz, alpha + offsett[i] + X[i,] * beta},
+                              {0.},
+                              {y[i]},
+                  sqrt(sqrt(machine_precision())) // increase relative tolerance, default=sqrt(machine_precision())
                   )
                   );
      // for debugging
