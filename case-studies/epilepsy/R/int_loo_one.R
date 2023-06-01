@@ -117,3 +117,24 @@ linpreds_minus_re <- lin_pred_witho[1,1]
 
 mean(dpois(x = y, 
            lambda = exp(z_norm + linpreds_minus_re)))
+
+# for all observations
+log_lik <- matrix(data=NA, nrow = 4000, ncol = 236)
+
+tic()
+
+for (i in seq(NROW(input_df_5))){
+  for (j in seq(NROW(brms::epilepsy))){
+    zs = zs_df[i,j]
+    linpreds_minus_re <- lin_pred_witho[i,j]
+    y = as.numeric(brms::epilepsy$count[j])
+    print(paste0("Iteration: ", i, " linpreds: ", linpreds_minus_re, " y: ", y))
+    log_lik[i,j] <- log(integrate(integrand, 
+                                  lower = -Inf,
+                                  upper = Inf,
+                                  y = y,
+                                  linpreds_minus_re = linpreds_minus_re)$value)
+  }
+}
+  
+toc()
