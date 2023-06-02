@@ -175,7 +175,7 @@ for (i in seq(NROW(input_df_5))){
 toc()
 
 # results for all observations and iterations with gauss.hermite() ####
-log_lik <- matrix(data=NA, nrow = 4000, ncol = 236)
+log_lik_gh <- matrix(data=NA, nrow = 4000, ncol = 236)
 
 tic()
 
@@ -200,7 +200,7 @@ for (i in seq(NROW(input_df_5))){
       return(result)
     }
     print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " linpreds: ", linpreds_minus_re, " y: ", y))
-    log_lik[i,j] <- log(gauss.hermite(integrand_gh, 
+    log_lik_gh[i,j] <- log(gauss.hermite(integrand_gh, 
                                       mu = 0, 
                                       sd = 1, 
                                       sd_obs = sd_obs,
