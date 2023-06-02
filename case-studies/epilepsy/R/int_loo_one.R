@@ -45,16 +45,23 @@ input_df_5 <- draws_df_5 |>
 
 head(input_df_5)
 
-# extract linpred 
+# extract linpred ####
+
 # from brms docs: "[posterior] draws before applying any link functions or other transformations"
 lin_pred <- brms::posterior_linpred(model_5)
 
-# Now: without obs-level random intercept
+# Now: without obs-level random intercept ####
+
 # standardized group-level effects
 zs_df <- data.frame(matrix(unlist(input_df_5$zs), ncol=236, byrow=T))
-lin_pred_witho <- lin_pred - zs_df # different values across iterations, and observations
+lin_pred_witho <- lin_pred - zs_df # different values across iterations, and obs
 
-# compute integrated loo
+# actual group-level effects
+rs_df <- data.frame(matrix(unlist(input_df_5$rs), ncol=236, byrow=T)) 
+lin_pred_without <- lin_pred - rs_df # different values across iterations, same value for each obs
+lin_pred_test <- lin_pred - (zs_df * input_df_5$sd) # just a sanity check - this is the same as substracting rs_df
+
+# compute integrated loo ####
 
 # define integrand as function  ####
 # in Stan code: exp(std_normal_lpdf(z_1) + poisson_log_lpmf(Yi[1] | r_1_1 + linpred_minus_re))
@@ -62,6 +69,7 @@ lin_pred_witho <- lin_pred - zs_df # different values across iterations, and obs
 # evaluate integral with integrate()
 # from docs: "globally adaptive interval subdivision is used in connection with extrapolation by Wynn's Epsilon algorithm, with the basic step being Gauss-Kronrod quadrature"
 integrand <- function(zs, 
+                      sd_obs,
                       y, 
                       linpreds_minus_re){
   
@@ -74,7 +82,7 @@ integrand <- function(zs,
   
   # in Stan code: poisson_log_lpmf(Yi[1] | r_1_1 + linpred_minus_re)
   fit_term <- dpois(x = y, 
-                    lambda = exp(zs + linpreds_minus_re),
+                    lambda = exp((zs*sd_obs)+ linpreds_minus_re),
                     log = TRUE)
   
   result = exp(z_term + fit_term)
@@ -84,19 +92,22 @@ integrand <- function(zs,
 test <- integrate(integrand, 
           lower = -Inf, 
           upper = Inf,
+          sd_obs = input_df_5$sd[1],
           y = as.numeric(brms::epilepsy$count[1]), 
-          linpreds_minus_re = lin_pred_witho[1,1])
+          linpreds_minus_re = lin_pred_without[1,1])
 str(test)
+
 # compare to Gauss-Hermite quadrature
 # in Stan code: exp(std_normal_lpdf(z_1) + poisson_log_lpmf(Yi[1] | r_1_1 + linpred_minus_re))
-integrand_ghq <- function(zs, 
+integrand_ghq <- function(zs,
+                          sd_obs,
                           y, 
                           linpreds_minus_re){
   
   # function defines integrand for gauss.hermite()
   # in Stan code: poisson_log_lpmf(Yi[1] | r_1_1 + linpred_minus_re)
   fit_term <- dpois(x = y, 
-                    lambda = exp(zs + linpreds_minus_re))
+                    lambda = exp((zs*sd_obs) + linpreds_minus_re))
   
   result = fit_term
   return(result)
@@ -106,35 +117,97 @@ integrand_ghq <- function(zs,
 gauss.hermite(integrand_ghq, 
               mu = 0, 
               sd = 1, 
+              sd_obs = input_df_5$sd[1],
               y = as.numeric(brms::epilepsy$count[1]), 
-              linpreds_minus_re = lin_pred_witho[1,1], 
+              linpreds_minus_re = lin_pred_without[1,1], 
               order = 20)
 
 # compare the above results to rnorm()
 z_norm <- rnorm(100000)
-y = as.numeric(brms::epilepsy$count[1])
-linpreds_minus_re <- lin_pred_witho[1,1]
+sd <- input_df_5$sd[1]
+y <- as.numeric(brms::epilepsy$count[1])
+linpreds_minus_re <- lin_pred_without[1,1]
 
 mean(dpois(x = y, 
-           lambda = exp(z_norm + linpreds_minus_re)))
+           lambda = exp((z_norm*sd) + linpreds_minus_re)))
 
-# for all observations
+# results for all observations and iterations with integrate() ####
 log_lik <- matrix(data=NA, nrow = 4000, ncol = 236)
 
 tic()
 
 for (i in seq(NROW(input_df_5))){
   for (j in seq(NROW(brms::epilepsy))){
-    zs = zs_df[i,j]
-    linpreds_minus_re <- lin_pred_witho[i,j]
-    y = as.numeric(brms::epilepsy$count[j])
-    print(paste0("Iteration: ", i, " linpreds: ", linpreds_minus_re, " y: ", y))
+    zs <- zs_df[i,j]
+    sd_obs <- input_df_5$sd[i]
+    linpreds_minus_re <- lin_pred_without[i,j]
+    y <- as.numeric(brms::epilepsy$count[j])
+    integrand <- function(zs, 
+                          sd_obs,
+                          y, 
+                          linpreds_minus_re){
+      
+      # function defines integrand for integrate()
+      # in Stan code: std_normal_lpdf(z_1)
+      z_term <- dnorm(zs,
+                      mean = 0, 
+                      sd = 1,
+                      log = TRUE)
+      
+      # in Stan code: poisson_log_lpmf(Yi[1] | r_1_1 + linpred_minus_re)
+      fit_term <- dpois(x = y, 
+                        lambda = exp((zs*sd_obs)  + linpreds_minus_re),
+                        log = TRUE)
+      
+      result = exp(z_term + fit_term)
+      return(result)
+    }
+    print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " linpreds: ", linpreds_minus_re, " y: ", y))
     log_lik[i,j] <- log(integrate(integrand, 
                                   lower = -Inf,
                                   upper = Inf,
+                                  sd_obs = sd_obs,
                                   y = y,
                                   linpreds_minus_re = linpreds_minus_re)$value)
   }
 }
   
+toc()
+
+# results for all observations and iterations with gauss.hermite() ####
+log_lik <- matrix(data=NA, nrow = 4000, ncol = 236)
+
+tic()
+
+for (i in seq(NROW(input_df_5))){
+  for (j in seq(NROW(brms::epilepsy))){
+    zs <- zs_df[i,j]
+    sd_obs <- input_df_5$sd[i]
+    linpreds_minus_re <- lin_pred_without[i,j]
+    y <- as.numeric(brms::epilepsy$count[j])
+    integrand_gh <- function(zs, 
+                          sd_obs,
+                          y, 
+                          linpreds_minus_re){
+      
+      # function defines integrand for gauss.hermite()
+      
+      # in Stan code: poisson_log_lpmf(Yi[1] | r_1_1 + linpred_minus_re)
+      fit_term <- dpois(x = y, 
+                        lambda = exp((zs*sd_obs)  + linpreds_minus_re))
+      
+      result = fit_term
+      return(result)
+    }
+    print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " linpreds: ", linpreds_minus_re, " y: ", y))
+    log_lik[i,j] <- log(gauss.hermite(integrand_gh, 
+                                      mu = 0, 
+                                      sd = 1, 
+                                      sd_obs = sd_obs,
+                                      y = y, 
+                                      linpreds_minus_re = linpreds_minus_re, 
+                                      order = 20))
+  }
+}
+
 toc()
