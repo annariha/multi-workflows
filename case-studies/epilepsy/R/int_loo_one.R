@@ -24,6 +24,8 @@ models_with_obs_randint <- combinations_df |> filter(obs != "")
 # test: get one brms model 
 model_5 <- build_fit(models_with_obs_randint[5,], dataset = brms::epilepsy)
 
+model_93 <- build_fit(models_with_obs_randint[93,], dataset = brms::epilepsy)
+
 # get stan code 
 brms::stancode(model_5)
 
@@ -211,3 +213,26 @@ for (i in seq(NROW(input_df_5))){
 }
 
 toc()
+
+# compare to mean(dpois())
+# compare the above results to rnorm()
+log_lik_rnorm <- matrix(data=NA, nrow = 4000, ncol = 236)
+z_norm <- rnorm(100000)
+
+for (i in seq(NROW(input_df_5))){
+  for (j in seq(NROW(brms::epilepsy))){
+    sd_obs <- input_df_5$sd[i]
+    y <- as.numeric(brms::epilepsy$count[j])
+    linpreds_minus_re <- lin_pred_without[i,j]
+    print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " linpreds: ", linpreds_minus_re, " y: ", y))
+    log_lik_rnorm[i,j] <- log(
+      mean(
+        dpois(x = y, 
+              lambda = exp((z_norm*sd_obs) + linpreds_minus_re))
+      )
+    )
+  }
+}
+
+# how close are the two methods 
+check <- log_lik - log_lik_gh
