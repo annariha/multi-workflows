@@ -76,6 +76,20 @@ build_loglik <- function(row, ...){
   return(log_lik_array)
 }
 
+# set seed
+set.seed(42424242)
+
 # test
+tic()
 log_lik <- build_loglik(models_with_obs_randint[5,], dataset=brms::epilepsy)
+toc()
+
+tic()
 loo(log_lik, r_eff = relative_eff(exp(log_lik)))
+toc()
+
+log_lik_93 <- build_loglik(models_with_obs_randint[93,], dataset=brms::epilepsy)
+loo(log_lik_93, r_eff = relative_eff(exp(log_lik_93)))
+
+# compare to default 
+loo(build_fit(models_with_obs_randint[5,]))
