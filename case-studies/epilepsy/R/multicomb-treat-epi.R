@@ -3,9 +3,8 @@
 # setup ####
 # load packages 
 if(!requireNamespace("pacman"))install.packages("pacman")
-pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse, 
-               tidybayes, transport, loo, multiverse, priorsense, cmdstanr,
-               ggdendro, cowplot)
+pacman::p_load(here, tictoc, purrr, parallel, furrr, brms, Matrix, tidyverse, 
+               tidybayes, transport, loo, priorsense, cmdstanr)
 
 # run once
 # cmdstanr::install_cmdstan()
@@ -13,10 +12,10 @@ pacman::p_load(here, tictoc, purrr, parallel, brms, Matrix, tidyverse,
 source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_brms_formula.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_fit.R"))
-source(here::here("case-studies", "epilepsy", "R", "get_rhat_trt.R"))
+source(here::here("case-studies", "epilepsy", "R", "eval_rhat_trt.R"))
 
 # set seed
-set.seed(42424242)
+set.seed(424242)
 
 # set # of cores 
 nc <- detectCores() - 1
@@ -78,6 +77,9 @@ combinations_df <- combinations_df |>
 combinations_df <- combinations_df |> 
   mutate(priors = names(combinations_df$prior))
 
+# set row names to model names, needed for plotting
+rownames(combinations_df) <- apply(combinations_df, 1, build_name)
+
 # store combinations dataframe to use in other scripts 
 write_rds(combinations_df, here::here("case-studies", "epilepsy", "data", "prelim", "combinations_df.rds"))
 
@@ -91,17 +93,46 @@ comb_df <- combinations_df |>
 tic()
 comb_df <- comb_df |> 
   mutate(
-    model_fit = apply(combinations_df, 1, build_fit)) 
+    model_fit = future.apply::future_apply(combinations_df, 1, build_fit, dataset=brms::epilepsy, future.seed=TRUE)) 
 toc()
 
-# get all modelfits 
-models <- apply(combinations_df, 1, build_fit)
+tic()
+model_fits = future.apply::future_apply(combinations_df, 1, build_fit, dataset=brms::epilepsy, future.seed=TRUE)
+toc()
 
+write_rds(model_fit, here::here("case-studies", "epilepsy", "data", "prelim", "models_futureapply.rds") )
+
+# get all modelfits 
+#models <- apply(combinations_df, 1, build_fit)
 # This gives the same result as using apply(...) 
 #models <- combinations_df |>
 #  group_nest(row_number()) |>
 #  pull(data) |>
 #  purrr::map(build_fit)
+
+tic()
+future::plan(multisession)
+#set.seed(424242)
+models_1 <- combinations_df |>
+  #combinations_df[sample(NROW(combinations_df), 5), ] |>
+  group_nest(row_number()) |>
+  pull(data) |>
+  furrr::future_map(~build_fit(.x, dataset = brms::epilepsy), 
+                    .options=furrr_options(seed=TRUE))
+toc()
+
+write_rds(models_1, here::here("case-studies", "epilepsy", "data", "prelim", "models_1_furrr.rds") )
+
+tic()
+plan(multisession)
+#set.seed(424242)
+models <- combinations_df %>%
+  split(1:nrow(.)) |>
+  furrr::future_map(~build_fit(.x, dataset = brms::epilepsy), 
+                    .options=furrr_options(seed=TRUE))
+toc()
+
+write_rds(models, here::here("case-studies", "epilepsy", "data", "prelim", "models_furrr.rds") )
 
 # high Rhat for treatment ####
 comb_df <- comb_df |> 
@@ -286,17 +317,17 @@ pbma_df |> arrange(pbma_weight) |>
 epsilon = 1e-05
 
 # visualise
-plot_filtered_pbmaw <- pbma_df |> 
+data_plot_filtered_pbmaw <- pbma_df |> 
   arrange(pbma_weight) |>
   mutate(models = forcats::fct_inorder(rownames(pbma_df))) |>
-  filter(pbma_weight >= epsilon) |> 
-  {ggplot(., aes(x = pbma_weight, y = models)) + 
+  filter(pbma_weight >= epsilon)
+
+plot_filtered_pbmaw <-  ggplot(data_plot_filtered_pbmaw, aes(x = pbma_weight, y = models)) + 
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
       ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
       theme_bw() + 
       theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
-  }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_pbmaw_epi.png"), 
           plot_filtered_pbmaw,
@@ -305,16 +336,16 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_pbmaw_e
 
 # Plots: visual inspection of stacking weights ####
 
-plot_ordered_stackw <- stack_df |> 
+data_plot_ordered_stackw <- stack_df |> 
   arrange(stack_weight) |>
-  mutate(models = forcats::fct_inorder(rownames(stack_df))) |> 
-  {ggplot(., aes(x = stack_weight, y = models)) + 
+  mutate(models = forcats::fct_inorder(rownames(stack_df)))
+
+plot_ordered_stackw <- ggplot(data_plot_ordered_stackw, aes(x = stack_weight, y = models)) + 
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
       ggtitle(paste0("All models (k=", NROW(.), ")")) + 
       theme_bw() +
       theme(axis.text.y = element_text(color = "grey20", size = 6, angle = 0, hjust = 1, vjust = 0, face = "plain"))
-  }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_stackw_epi.png"), 
           plot_ordered_stackw, 
@@ -324,17 +355,17 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_stackw_epi
 # filter out stacking weights close to zero
 # where close to zero means < 1e-04 (?) 
 
-plot_filtered_stackw <- stack_df |> 
+data_plot_filtered_stackw <- stack_df |> 
   arrange(stack_weight) |>
   mutate(models = forcats::fct_inorder(rownames(stack_df))) |>
-  filter(stack_weight >= 1e-04) |> 
-  {ggplot(., aes(x = stack_weight, y = models)) + 
+  filter(stack_weight >= 1e-04)
+
+plot_filtered_stackw <- ggplot(data_plot_filtered_stackw, aes(x = stack_weight, y = models)) + 
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
       ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
       theme_bw() + 
       theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
-  }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_epi.png"), 
           plot_filtered_stackw,
@@ -342,16 +373,16 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_
           base_aspect_ratio = 1.5)
 
 # Plots: visual inspection of elpd diff + se ####
-plot_all_elpddiff <- full_df |>
+data_plot_all_elpddiff <- full_df |>
   arrange(elpd_diff) |> 
-  mutate(models = forcats::fct_inorder(rownames(.))) |>
-  {ggplot(., aes(x = elpd_diff, y = models)) +
+  mutate(models = forcats::fct_inorder(rownames(.))) 
+
+plot_all_elpddiff <- ggplot(data_plot_all_elpddiff, aes(x = elpd_diff, y = models)) +
       geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
       ggtitle(paste0("All models (k=", NROW(.), ")")) + 
       theme_bw()
-  }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_elpddiff_epi.png"), 
           plot_all_elpddiff,
@@ -362,17 +393,17 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_elpddiff_e
 mean_filter = mean(full_df$elpd_diff)
 
 # visualise filtered set of models 
-plot_filter_mean_elpddiff <- full_df |>
+data_plot_filter_mean_elpddiff <- full_df |>
   arrange(elpd_diff) |> 
   mutate(models = forcats::fct_inorder(rownames(.))) |>
-  filter(elpd_diff >= mean_filter) |>
-  {ggplot(., aes(x = elpd_diff, y = models)) +
+  filter(elpd_diff >= mean_filter)
+
+plot_filter_mean_elpddiff <- ggplot(plot_filter_mean_elpddiff, aes(x = elpd_diff, y = models)) +
       geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
       ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using mean")) + 
       theme_bw()
-  }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_mean_elpddiff_epi.png"), 
           plot_filter_mean_elpddiff,
@@ -381,17 +412,17 @@ save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_mean_el
 
 median_filter = median(full_df$elpd_diff)
 
-plot_filter_median_elpddiff <- full_df |>
+data_plot_filter_median_elpddiff <- full_df |>
   arrange(elpd_diff) |> 
   mutate(models = forcats::fct_inorder(rownames(.))) |>
-  filter(elpd_diff >= median_filter) |>
-  {ggplot(., aes(x = elpd_diff, y = models)) +
+  filter(elpd_diff >= median_filter) 
+
+plot_filter_median_elpddiff <- ggplot(data_plot_filter_median_elpddiff, aes(x = elpd_diff, y = models)) +
       geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
       geom_point(shape=21, size=2) +
       geom_vline(xintercept = 0, linetype="dotted") +
       ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using median")) + 
       theme_bw()
-  }
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_median_elpddiff_epi.png"), 
           plot_filter_median_elpddiff,
