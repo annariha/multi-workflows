@@ -113,7 +113,7 @@ write_rds(model_fit, here::here("case-studies", "epilepsy", "data", "prelim", "m
 tic()
 future::plan(multisession)
 #set.seed(424242)
-models_1 <- combinations_df |>
+modelfits <- combinations_df |>
   #combinations_df[sample(NROW(combinations_df), 5), ] |>
   group_nest(row_number()) |>
   pull(data) |>
@@ -121,7 +121,7 @@ models_1 <- combinations_df |>
                     .options=furrr_options(seed=TRUE))
 toc()
 
-write_rds(models_1, here::here("case-studies", "epilepsy", "data", "prelim", "models_1_furrr.rds") )
+write_rds(modelfits, here::here("case-studies", "epilepsy", "data", "prelim", "modelfits.rds") )
 
 tic()
 plan(multisession)
@@ -135,19 +135,25 @@ toc()
 write_rds(models, here::here("case-studies", "epilepsy", "data", "prelim", "models_furrr.rds") )
 
 # high Rhat for treatment ####
-comb_df <- comb_df |> 
-  mutate(rhats = purrr::map(model_fit, brms::rhat),
-         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
-         rhats_raw = purrr::map(model_fit, get_rhat_trt))
 
+# without furrr
+#comb_df <- comb_df |> 
+#  mutate(rhats = purrr::map(modelfits, brms::rhat),
+         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
+#         rhats_raw = purrr::map(modelfits, get_rhat_trt))
+# all rhats 
+#all_rhats <- purrr::map(models, brms::rhat)
+# test
+#names(rhats_trt) <- comb_df$model_name
+
+tic()
+comb_df <- comb_df |> 
+  mutate(rhats = furrr::future_map(modelfits, brms::rhat),
+         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
+         rhats_raw = furrr::future_map(modelfits, eval_rhat_trt))
+toc()
 # store comb dataframe to use in other scripts 
 write_rds(comb_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df.rds"))
-
-# all rhats 
-all_rhats <- purrr::map(models, brms::rhat)
-
-# test
-names(rhats_trt) <- comb_df$model_name
 
 rhat_trt_df <- 
   tibble(model_name = comb_df$model_name, rhats_raw = purrr::map(comb_df$model_fit, get_rhat_trt)) |>
