@@ -23,14 +23,16 @@ models_with_obs_randint <- combinations_df |> filter(obs != "")
 
 # test: get one brms model 
 model_5 <- build_fit(models_with_obs_randint[5,], dataset = brms::epilepsy)
-
+model_6 <- build_fit(models_with_obs_randint[6,], dataset = brms::epilepsy)
 model_93 <- build_fit(models_with_obs_randint[93,], dataset = brms::epilepsy)
 
 # get stan code 
 brms::stancode(model_5)
+brms::stancode(model_6)
 
 # get posterior draws
 draws_df_5 <- posterior::as_draws_df(model_5)
+draws_df_6 <- posterior::as_draws_df(model_6)
 
 # reformat draws to combine z's (and beta's) as vectors for each iteration in each chain
 input_df_5 <- draws_df_5 |> 
@@ -46,6 +48,19 @@ input_df_5 <- draws_df_5 |>
   mutate(zs = list(unlist(rs) / sd))
 
 head(input_df_5)
+
+# reformat draws to combine z's (and beta's) as vectors for each iteration in each chain
+input_df_6 <- draws_df_6 |> 
+  tidyr::nest(rs = starts_with("r_obs"),
+              sd = matches("sd_obs__Intercept"),
+              shape = matches("shape")) |>
+  mutate(rs = map(rs, unlist),
+         sd = map_dbl(sd, ~matrix(unlist(.x), ncol = 1)),
+         shape = map_dbl(shape, ~matrix(unlist(.x), ncol = 1))) |>
+  rowwise() |>
+  mutate(zs = list(unlist(rs) / sd))
+
+head(input_df_6)
 
 # extract linpred ####
 
