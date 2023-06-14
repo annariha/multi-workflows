@@ -83,6 +83,7 @@ set.seed(42424242)
 tic()
 log_lik <- build_loglik(models_with_obs_randint[5,], dataset=brms::epilepsy)
 toc()
+
 tic()
 loo(log_lik, r_eff = relative_eff(exp(log_lik)))
 toc()
@@ -107,10 +108,15 @@ write_rds(logliks, here::here("case-studies", "epilepsy", "data", "prelim", "log
 # include Poisson and neg. Binomial families
 build_loglik_2 <- function(row, ...){
   
-  # get model fit ####
+  # get model fit
   modelfit = build_fit(row, ...)
   # get posterior draws
   draws_df = posterior::as_draws_df(modelfit)
+  # extract outcome 
+  outcome_name = row[["outcome"]]
+  outcome = as.numeric(unlist(modelfit$data[outcome_name]))
+  # empty matrix to build loglik array lateron
+  log_lik = matrix(data=NA, nrow=brms::nchains(modelfit)*brms::niterations(modelfit), ncol=NROW(modelfit$data))
   
   # two ways of computing loglik depending on obs family ####
   if (unlist(modelfit$family)$family == "poisson"){
@@ -132,14 +138,7 @@ build_loglik_2 <- function(row, ...){
     rs_df = data.frame(matrix(unlist(input_df$rs), ncol=NROW(modelfit$data), byrow=T)) 
     lin_pred_without = lin_pred - rs_df # different values across iterations, same value for each obs
   
-    # outcome ####
-    outcome_name = row[["outcome"]]
-    outcome = as.numeric(unlist(modelfit$data[outcome_name]))
-  
     # results for all observations and iterations with integrate() ####
-    log_lik = matrix(data=NA, nrow=brms::nchains(modelfit)*brms::niterations(modelfit), ncol=NROW(modelfit$data))
-  
-    # iterate to get loglik
     for (i in seq(NROW(input_df))){
       for (j in seq(NROW(modelfit$data))){
         zs <- zs_df[i,j]
@@ -192,15 +191,8 @@ build_loglik_2 <- function(row, ...){
     # actual group-level effects
     rs_df = data.frame(matrix(unlist(input_df$rs), ncol=NROW(modelfit$data), byrow=T)) 
     lin_pred_without = lin_pred - rs_df # different values across iterations, same value for each obs
-    
-    # outcome ####
-    outcome_name = row[["outcome"]]
-    outcome = as.numeric(unlist(modelfit$data[outcome_name]))
-    
+  
     # results for all observations and iterations with integrate() ####
-    log_lik = matrix(data=NA, nrow=brms::nchains(modelfit)*brms::niterations(modelfit), ncol=NROW(modelfit$data))
-    
-    # iterate to get loglik
     for (i in seq(NROW(input_df))){
       for (j in seq(NROW(modelfit$data))){
         zs <- zs_df[i,j]
