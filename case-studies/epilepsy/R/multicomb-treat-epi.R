@@ -134,38 +134,7 @@ toc()
 
 write_rds(models, here::here("case-studies", "epilepsy", "data", "prelim", "models_furrr.rds") )
 
-# high Rhat for treatment ####
-
-# without furrr
-#comb_df <- comb_df |> 
-#  mutate(rhats = purrr::map(modelfits, brms::rhat),
-         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
-#         rhats_raw = purrr::map(modelfits, get_rhat_trt))
-# all rhats 
-#all_rhats <- purrr::map(models, brms::rhat)
-# test
-#names(rhats_trt) <- comb_df$model_name
-
-tic()
-comb_df <- comb_df |> 
-  mutate(rhats = furrr::future_map(modelfits, brms::rhat),
-         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
-         rhats_raw = furrr::future_map(modelfits, eval_rhat_trt))
-toc()
-# store comb dataframe to use in other scripts 
-write_rds(comb_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df.rds"))
-
-rhat_trt_df <- 
-  tibble(model_name = comb_df$model_name, rhats_raw = purrr::map(comb_df$model_fit, get_rhat_trt)) |>
-  unnest(rhats_raw) |>
-  group_by(model_name) |>
-  mutate(key = row_number()) |>
-  spread(key, rhats_raw) |>
-  rename(rhat_Trt = 2, rhat_zBaseTrt = 3) |>
-  # high rhat for treatment
-  mutate(high_rhat_Trt = ifelse(rhat_Trt > 1.01, 1, 0),
-         high_rhat_zBaseTrt = ifelse(rhat_zBaseTrt > 1.01, 1, 0))
-
+# predictive performance ####
 # loo: elpd and model comparison ####
 build_loo <- function(row, ...){
   # print(build_name(row))
@@ -329,11 +298,11 @@ data_plot_filtered_pbmaw <- pbma_df |>
   filter(pbma_weight >= epsilon)
 
 plot_filtered_pbmaw <-  ggplot(data_plot_filtered_pbmaw, aes(x = pbma_weight, y = models)) + 
-      geom_point(shape=21, size=2) +
-      geom_vline(xintercept = 0, linetype="dotted") +
-      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
-      theme_bw() + 
-      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  geom_point(shape=21, size=2) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+  theme_bw() + 
+  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_pbmaw_epi.png"), 
           plot_filtered_pbmaw,
@@ -347,11 +316,11 @@ data_plot_ordered_stackw <- stack_df |>
   mutate(models = forcats::fct_inorder(rownames(stack_df)))
 
 plot_ordered_stackw <- ggplot(data_plot_ordered_stackw, aes(x = stack_weight, y = models)) + 
-      geom_point(shape=21, size=2) +
-      geom_vline(xintercept = 0, linetype="dotted") +
-      ggtitle(paste0("All models (k=", NROW(.), ")")) + 
-      theme_bw() +
-      theme(axis.text.y = element_text(color = "grey20", size = 6, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  geom_point(shape=21, size=2) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("All models (k=", NROW(.), ")")) + 
+  theme_bw() +
+  theme(axis.text.y = element_text(color = "grey20", size = 6, angle = 0, hjust = 1, vjust = 0, face = "plain"))
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_stackw_epi.png"), 
           plot_ordered_stackw, 
@@ -367,11 +336,11 @@ data_plot_filtered_stackw <- stack_df |>
   filter(stack_weight >= 1e-04)
 
 plot_filtered_stackw <- ggplot(data_plot_filtered_stackw, aes(x = stack_weight, y = models)) + 
-      geom_point(shape=21, size=2) +
-      geom_vline(xintercept = 0, linetype="dotted") +
-      ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
-      theme_bw() + 
-      theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
+  geom_point(shape=21, size=2) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("Filtered set of models (k=", NROW(.), ")")) + 
+  theme_bw() + 
+  theme(axis.text.y = element_text(color = "grey20", size = 8, angle = 0, hjust = 1, vjust = 0, face = "plain"))
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_stackw_epi.png"), 
           plot_filtered_stackw,
@@ -384,11 +353,11 @@ data_plot_all_elpddiff <- full_df |>
   mutate(models = forcats::fct_inorder(rownames(.))) 
 
 plot_all_elpddiff <- ggplot(data_plot_all_elpddiff, aes(x = elpd_diff, y = models)) +
-      geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
-      geom_point(shape=21, size=2) +
-      geom_vline(xintercept = 0, linetype="dotted") +
-      ggtitle(paste0("All models (k=", NROW(.), ")")) + 
-      theme_bw()
+  geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+  geom_point(shape=21, size=2) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("All models (k=", NROW(.), ")")) + 
+  theme_bw()
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_all_elpddiff_epi.png"), 
           plot_all_elpddiff,
@@ -405,11 +374,11 @@ data_plot_filter_mean_elpddiff <- full_df |>
   filter(elpd_diff >= mean_filter)
 
 plot_filter_mean_elpddiff <- ggplot(plot_filter_mean_elpddiff, aes(x = elpd_diff, y = models)) +
-      geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
-      geom_point(shape=21, size=2) +
-      geom_vline(xintercept = 0, linetype="dotted") +
-      ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using mean")) + 
-      theme_bw()
+  geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+  geom_point(shape=21, size=2) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using mean")) + 
+  theme_bw()
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_mean_elpddiff_epi.png"), 
           plot_filter_mean_elpddiff,
@@ -424,16 +393,49 @@ data_plot_filter_median_elpddiff <- full_df |>
   filter(elpd_diff >= median_filter) 
 
 plot_filter_median_elpddiff <- ggplot(data_plot_filter_median_elpddiff, aes(x = elpd_diff, y = models)) +
-      geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
-      geom_point(shape=21, size=2) +
-      geom_vline(xintercept = 0, linetype="dotted") +
-      ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using median")) + 
-      theme_bw()
+  geom_errorbar(width=.1, aes(xmin = elpd_diff - se_diff, xmax = elpd_diff + se_diff)) +
+  geom_point(shape=21, size=2) +
+  geom_vline(xintercept = 0, linetype="dotted") +
+  ggtitle(paste0("Filtered set of models (k=", NROW(.), "), using median")) + 
+  theme_bw()
 
 save_plot(here::here("case-studies", "epilepsy", "figures", "plot_filter_median_elpddiff_epi.png"), 
           plot_filter_median_elpddiff,
           base_height = 15, 
           base_aspect_ratio = 1.5)
+
+# high Rhat for treatment ####
+
+# without furrr
+#comb_df <- comb_df |> 
+#  mutate(rhats = purrr::map(modelfits, brms::rhat),
+         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
+#         rhats_raw = purrr::map(modelfits, get_rhat_trt))
+# all rhats 
+#all_rhats <- purrr::map(models, brms::rhat)
+# test
+#names(rhats_trt) <- comb_df$model_name
+
+tic()
+comb_df <- comb_df |> 
+  mutate(rhats = furrr::future_map(modelfits, brms::rhat),
+         # get rhats for treatment (and interaction) i.e., only Rhats of "b_Trt1" (and if present "b_zBase:Trt1")
+         rhats_raw = furrr::future_map(modelfits, eval_rhat_trt))
+toc()
+# store comb dataframe to use in other scripts 
+write_rds(comb_df, here::here("case-studies", "epilepsy", "data", "prelim", "comb_df.rds"))
+
+rhat_trt_df <- 
+  tibble(model_name = comb_df$model_name, rhats_raw = purrr::map(comb_df$model_fit, get_rhat_trt)) |>
+  unnest(rhats_raw) |>
+  group_by(model_name) |>
+  mutate(key = row_number()) |>
+  spread(key, rhats_raw) |>
+  rename(rhat_Trt = 2, rhat_zBaseTrt = 3) |>
+  # high rhat for treatment
+  mutate(high_rhat_Trt = ifelse(rhat_Trt > 1.01, 1, 0),
+         high_rhat_zBaseTrt = ifelse(rhat_zBaseTrt > 1.01, 1, 0))
+
 
 # Which models are too similar to be meaningfully distinguished wrt pred. performance? -> se overlaps 0
 # ...
