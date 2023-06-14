@@ -22,11 +22,13 @@ combinations_df <- read_rds(here::here("case-studies", "epilepsy", "data", "prel
 models_with_obs_randint <- combinations_df |> filter(obs != "") 
 
 # test: get one brms model 
+model_3 <- build_fit(models_with_obs_randint[3,], dataset = brms::epilepsy)
 model_5 <- build_fit(models_with_obs_randint[5,], dataset = brms::epilepsy)
 model_6 <- build_fit(models_with_obs_randint[6,], dataset = brms::epilepsy)
 model_93 <- build_fit(models_with_obs_randint[93,], dataset = brms::epilepsy)
 
 # get stan code 
+brms::stancode(model_3)
 brms::stancode(model_5)
 brms::stancode(model_6)
 
@@ -66,6 +68,7 @@ head(input_df_6)
 
 # from brms docs: "[posterior] draws before applying any link functions or other transformations"
 lin_pred <- brms::posterior_linpred(model_5)
+lin_pred_6 <- brms::posterior_linpred(model_6)
 
 # Now: without obs-level random intercept ####
 
