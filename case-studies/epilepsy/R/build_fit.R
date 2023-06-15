@@ -4,7 +4,6 @@ build_fit <- function(row, dataset, ...){
   # for storing results
   filedir = here::here("case-studies", "epilepsy", "data", "prelim", "modelfits")
   if (!dir.exists(filedir)) {dir.create(filedir)}
-  print(paste0("stuff: ", class(unlist(row$prior))))
   # set priors here bc old code stopped working after updating 
   if (row[["priors"]] == "brms_horseshoe"){
     prior = brms::set_prior("horseshoe(3)")
