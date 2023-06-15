@@ -77,33 +77,30 @@ build_loglik <- function(row, ...){
 }
 
 # set seed
-set.seed(42424242)
-
+#set.seed(42424242)
 # test for one model
-tic()
-log_lik <- build_loglik(models_with_obs_randint[5,], dataset=brms::epilepsy)
-toc()
-
-tic()
-loo(log_lik, r_eff = relative_eff(exp(log_lik)))
-toc()
+#tic()
+#log_lik <- build_loglik(models_with_obs_randint[5,], dataset=brms::epilepsy)
+#toc()
+#tic()
+#loo(log_lik, r_eff = relative_eff(exp(log_lik)))
+#toc()
 # compare to default 
 #loo(build_fit(models_with_obs_randint[5,]))
 
-# workhorse ####
-tic()
-future::plan(multisession)
-logliks <- models_with_obs_randint |>
-  filter(family == "poisson") |>
+# test with a few models ####
+#tic()
+#future::plan(multisession)
+#logliks <- models_with_obs_randint |>
+  #filter(family == "poisson") |>
   # slice_sample(n = 10) |>
-  group_nest(row_number()) |>
-  pull(data) |>
-  furrr::future_map(~build_loglik(.x, dataset = brms::epilepsy), 
-                    .options=furrr_options(seed=TRUE))
-toc()
+  #group_nest(row_number()) |>
+  #pull(data) |>
+  #furrr::future_map(~build_loglik(.x, dataset = brms::epilepsy), .options=furrr_options(seed=TRUE))
+#toc()
 # approx. 40-45mins
 # store for later
-write_rds(logliks, here::here("case-studies", "epilepsy", "data", "prelim", "logliks_poisson.rds"))
+#write_rds(logliks, here::here("case-studies", "epilepsy", "data", "prelim", "logliks_poisson.rds"))
 
 # include Poisson and neg. Binomial families
 build_loglik_2 <- function(row, ...){
@@ -246,28 +243,3 @@ build_loglik_2 <- function(row, ...){
   # return loglik array
   return(log_lik_array)
 }
-
-# test with several models
-subset_test <- models_with_obs_randint[1:20,]
-tic()
-future::plan(multisession, workers = parallel::detectCores() - 2)
-subset_test$logliks_test <- subset_test |> 
-  group_nest(row_number()) |>
-  pull(data) |> 
-  furrr::future_map(~build_loglik_2(.x, dataset = brms::epilepsy), 
-                    .options=furrr_options(seed=TRUE))
-toc()
-
-write_rds(subset_test, here::here("case-studies", "epilepsy", "results", "logliks_test.rds"))
-
-# get loo objects
-tic()
-future::plan(multisession)
-subset_test <- subset_test |> 
-  mutate(loos = furrr::future_map(logliks_test, ~loo::loo(.x, r_eff = loo::relative_eff(exp(.x))), .options=furrr_options(seed=TRUE)))
-toc()
-
-write_rds(subset_test, here::here("case-studies", "epilepsy", "results", "all_loos_test.rds"))
-
-loo(build_fit(models_with_obs_randint[5,]))
-loo(build_fit(models_with_obs_randint[6,]))
