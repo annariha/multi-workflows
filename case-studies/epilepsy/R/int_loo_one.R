@@ -14,6 +14,7 @@ options(mc.cores = nc)
 
 # load functions
 source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
+source(here::here("case-studies", "epilepsy", "R", "build_brms_formula.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_fit.R"))
 
 # load combinations df ####
