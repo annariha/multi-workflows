@@ -67,4 +67,6 @@ combinations_df <- combinations_df |>
 rownames(combinations_df) <- apply(combinations_df, 1, build_name)
 
 # store combinations dataframe to use in other scripts ####
+filedir = here::here("case-studies", "epilepsy", "data", "prelim")
+if (!dir.exists(filedir)) {dir.create(filedir)}
 write_rds(combinations_df, here::here("case-studies", "epilepsy", "data", "prelim", "combinations_df.rds"))
