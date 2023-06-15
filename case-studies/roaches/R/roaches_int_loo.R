@@ -16,14 +16,14 @@ data(roaches)
 roaches$sqrt_roach1 <- sqrt(roaches$roach1)
 
 # stan file
-poisson_re_int <- here::here("case-studies", "roaches", "poisson_re_integrate.stan")
+poisson_re_int <- here::here("case-studies", "roaches", "Stan", "poisson_re_integrate.stan")
 
 # compile model, prepare data, sample ####
 #modpri <- cmdstanr::cmdstan_model(stan_file = poisson_re_int, compile_standalone = TRUE)
 modpri <- cmdstanr::cmdstan_model(stan_file = poisson_re_int)
 
-modpri$expose_functions(global = TRUE)
-modpri$functions
+#modpri$expose_functions(global = TRUE)
+#modpri$functions
 
 datap <- list(N=dim(roaches)[1], 
               P=3,
