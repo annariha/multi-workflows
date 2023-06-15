@@ -8,8 +8,8 @@ build_fit <- function(row, dataset, ...){
   # set priors here bc old code stopped working after updating 
   if (row[["priors"]] == "brms_horseshoe"){
     prior = brms::set_prior("horseshoe(3)")
-  } else {
-    prior = unlist(row[["prior"]])
+  } else if (row[["priors"]] == "brms_default"){
+    prior = NULL
   }
   # fit model with brms
   brm(
@@ -25,9 +25,6 @@ build_fit <- function(row, dataset, ...){
     refresh = 0
   ) 
 }
-
-brms::set_prior("NULL")
-brms::set_prior("horseshoe(3)")
 
 #test <- combinations_df[3,]
 #test_fit <- build_fit(test, dataset = brms::epilepsy)
