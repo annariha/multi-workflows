@@ -16,26 +16,14 @@ source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
 # set seed
 set.seed(42424242)
 
-# load data ####
-dat <- brms::epilepsy 
+# how is the outcome called in the data ####
+#dat <- brms::epilepsy 
 outcome_str <- "count"
 
 # create dataframe of combinations of model components ####
-# observation families
-families <- list(poisson = poisson(), 
-                 negbinomial = negbinomial())
-
-# priors 
-#priors <- list(brms_default = NULL, 
-#               brms_horseshoe = set_prior("horseshoe(3)")
-#)
-priors <- list(brms_default = "NULL", 
-               brms_horseshoe = "horseshoe(3)"
-)
-
 combinations_df <- expand.grid(
-  family = names(families),
-  prior = priors,
+  family = names(list(poisson = poisson(), negbinomial = negbinomial())),
+  prior = list(brms_default = "NULL", brms_horseshoe = "horseshoe(3)"),
   # fixed effects 
   Trt = c("", "Trt"), 
   zBase = c("", "zBase"),
