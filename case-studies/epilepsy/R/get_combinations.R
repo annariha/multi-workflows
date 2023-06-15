@@ -26,8 +26,11 @@ families <- list(poisson = poisson(),
                  negbinomial = negbinomial())
 
 # priors 
-priors <- list(brms_default = NULL, 
-               brms_horseshoe = set_prior("horseshoe(3)")
+#priors <- list(brms_default = NULL, 
+#               brms_horseshoe = set_prior("horseshoe(3)")
+#)
+priors <- list(brms_default = "NULL", 
+               brms_horseshoe = "horseshoe(3)"
 )
 
 combinations_df <- expand.grid(
