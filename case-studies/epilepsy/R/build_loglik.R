@@ -211,10 +211,10 @@ build_loglik_2 <- function(row, ...){
                           mean = 0, 
                           sd = 1,
                           log = TRUE)
-          # in Stan code: mu[n] += r_1_1[J_1[n]] * Z_1_1[n]
+          # in Stan code: mu[n] += r_1_1[J_1[n]] * Z_1_1[n] 
           # in Stan code: neg_binomial_2_log_glm_lpmf(Y | Xc, mu, b, shape)
-          # inverse overdispersion parameter phi
-          # https://stat.ethz.ch/R-manual/R-devel/library/stats/html/NegBinomial.html
+          # inverse overdispersion parameter phi = shape?
+          # using https://stat.ethz.ch/R-manual/R-devel/library/stats/html/NegBinomial.html
           fit_term <- dnbinom(x = y, 
                               size = shape, #dispersion parameter
                               mu = exp((zs*sd_obs) + linpreds_minus_re), 
@@ -248,12 +248,26 @@ build_loglik_2 <- function(row, ...){
 }
 
 # test with several models
-subset_test <- models_with_obs_randint[5:6,]
+subset_test <- models_with_obs_randint[1:20,]
 tic()
-future::plan(multisession)
+future::plan(multisession, workers = parallel::detectCores() - 2)
 subset_test$logliks_test <- subset_test |> 
   group_nest(row_number()) |>
   pull(data) |> 
   furrr::future_map(~build_loglik_2(.x, dataset = brms::epilepsy), 
                     .options=furrr_options(seed=TRUE))
 toc()
+
+write_rds(subset_test, here::here("case-studies", "epilepsy", "results", "logliks_test.rds"))
+
+# get loo objects
+tic()
+future::plan(multisession)
+subset_test <- subset_test |> 
+  mutate(loos = furrr::future_map(logliks_test, ~loo::loo(.x, r_eff = loo::relative_eff(exp(.x))), .options=furrr_options(seed=TRUE)))
+toc()
+
+write_rds(subset_test, here::here("case-studies", "epilepsy", "results", "all_loos_test.rds"))
+
+loo(build_fit(models_with_obs_randint[5,]))
+loo(build_fit(models_with_obs_randint[6,]))
