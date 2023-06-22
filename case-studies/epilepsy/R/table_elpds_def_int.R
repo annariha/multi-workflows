@@ -41,8 +41,7 @@ table_df_default <- comparison_df_default |>
          Family = names(), 
          Prior = ) 
   
-  
-penguins %>% 
+table_df_default %>% 
   knitr::kable(
     format = "latex",
     booktabs = TRUE,
