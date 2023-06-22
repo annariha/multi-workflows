@@ -38,11 +38,22 @@ tic()
 future::plan(multisession)
 loos_with_default <- combinations_df |>
   # for testing, 126.326 sec elapsed
-  dplyr::slice_sample(n = 5) |>
+  # dplyr::slice_sample(n = 5) |>
   group_nest(row_number()) |>
   pull(data) |>
   furrr::future_map(~build_loo(.x, dataset = brms::epilepsy), .options=furrr_options(seed=TRUE))
 toc()
+
+# add modelnames 
+modelnames_all <- combinations_df |>
+  group_nest(row_number()) |>
+  pull(data) |>
+  purrr::map_chr(~build_name(.x))
+
+names(loos_with_default) <- modelnames_all
+
+# compare models with loo & model averaging weights ####
+comparison_df_default = loo::loo_compare(loos_with_default)
 
 # store results ####
 filedir = here::here("case-studies", "epilepsy", "results")
