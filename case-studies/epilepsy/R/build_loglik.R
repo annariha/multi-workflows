@@ -159,7 +159,7 @@ build_loglik_2 <- function(row, ...){
           result = exp(z_term + fit_term)
           return(result)
         }
-        print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " linpreds: ", linpreds_minus_re, " y: ", y))
+        #print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " linpreds: ", linpreds_minus_re, " y: ", y))
         log_lik[i,j] <- log(integrate(integrand, 
                                       lower = -Inf,
                                       upper = Inf,
@@ -219,7 +219,7 @@ build_loglik_2 <- function(row, ...){
           result = exp(z_term + fit_term)
           return(result)
         }
-        print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " shape: ", shape, " linpreds: ", linpreds_minus_re, " y: ", y))
+        #print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " shape: ", shape, " linpreds: ", linpreds_minus_re, " y: ", y))
         log_lik[i,j] <- log(integrate(integrand, 
                                       lower = -Inf,
                                       upper = Inf,
