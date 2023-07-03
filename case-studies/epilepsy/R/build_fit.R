@@ -2,7 +2,7 @@
 
 build_fit <- function(row, dataset, ...){
   # for storing results
-  filedir = here::here("case-studies", "epilepsy", "data", "prelim", "modelfits")
+  filedir = here::here("case-studies", "epilepsy", "results", "prelim")
   if (!dir.exists(filedir)) {dir.create(filedir)}
   # set priors here bc old code stopped working after updating 
   if (row[["priors"]] == "brms_horseshoe"){
@@ -18,7 +18,7 @@ build_fit <- function(row, dataset, ...){
     # the below code used to work, still figuring out why it stopped working after updating
     # prior = row[["prior"]], 
     seed = 424242,
-    file = here::here("case-studies", "epilepsy", "data", "prelim", "modelfits", digest::digest(build_name(row), algo="md5")),
+    file = here::here("case-studies", "epilepsy", "results", "prelim", digest::digest(build_name(row), algo="md5")),
     backend = "cmdstanr", 
     silent = 2, 
     refresh = 0
