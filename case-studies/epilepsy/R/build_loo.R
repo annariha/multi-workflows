@@ -1,6 +1,12 @@
-################################################################################
+#! /usr/bin/Rscript --vanilla
+
 # loo: elpd and model comparison ####
-# if observation level random effect, then integrated loo
+build_loos <- function(row, dataset, ...){
+  modelfit = row[["modelfits"]][[1]]
+  name = row[["modelnames"]]
+  loo_object = loo(modelfit, model_names=c(name))
+  return(loo_object)
+} 
 
 build_loo <- function(row, dataset, ...){
   # print(build_name(row))
