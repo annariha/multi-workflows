@@ -1,3 +1,5 @@
+#! /usr/bin/Rscript --vanilla
+
 build_loglik <- function(row, ...){
   
   # get model fit ####
@@ -106,9 +108,11 @@ build_loglik <- function(row, ...){
 build_loglik_2 <- function(row, ...){
   
   # get model fit
-  modelfit = build_fit(row, ...)
+  # modelfit = build_fit(row, ...)
+  modelfit = row[["modelfits"]][[1]]
   # get posterior draws
-  draws_df = posterior::as_draws_df(modelfit)
+  # draws_df = posterior::as_draws_df(modelfit)
+  draws_df = row[["draws_df"]][[1]]
   # extract outcome 
   outcome_name = row[["outcome"]]
   outcome = as.numeric(unlist(modelfit$data[outcome_name]))
