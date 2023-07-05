@@ -39,7 +39,7 @@ get_ndivtrans <- function(modelfit){
 }
 
 # bulk ESS ####
-get_n_low_bulk_ess <- function(modelfit){
+get_n_low_bulkess <- function(modelfit){
   # number of model parameters 
   n_model_variables = brms::nvariables(modelfit)
   # good bulk ESS: # of chains * 100
@@ -71,10 +71,35 @@ get_prop_bulkess <- function(modelfit){
   return(prop_low_bulk_ess)
 }
 
-#get_tail_ess <- function(modelfit){
-#  sm <- summary(modelfit)
-#  tail_ess <- sm$spec_pars$Tail_ESS
-#  return(tail_ess)
-#}
+# tail ESS ####
+get_n_low_tailess <- function(modelfit){
+  # number of model parameters 
+  n_model_variables = brms::nvariables(modelfit)
+  # good tail ESS: # of chains * 100
+  good_ess = brms::nchains(modelfit) * 100
+  # get all tail ESS's
+  sm = summary(modelfit)
+  tail_ess_fixed = sm$fixed$Tail_ESS
+  tail_ess_spec = sm$spec_pars$Tail_ESS
+  all_tail_ess = c(tail_ess_fixed, tail_ess_spec)
+  low_tail_ess = all_tail_ess[all_tail_ess < good_ess]
+  n_low_tail_ess = length(low_tail_ess)
+  return(n_low_tail_ess)
+}
 
-# n_eff: what is good? what problematic? ####
+get_prop_tailess <- function(modelfit){
+  # number of model parameters 
+  n_model_variables = brms::nvariables(modelfit)
+  # good tail ESS: # of chains * 100
+  good_ess = brms::nchains(modelfit) * 100
+  # get all tail ESS's
+  sm = summary(modelfit)
+  tail_ess_fixed = sm$fixed$Tail_ESS
+  tail_ess_spec = sm$spec_pars$Tail_ESS
+  all_tail_ess = c(tail_ess_fixed, tail_ess_spec)
+  low_tail_ess = all_tail_ess[all_tail_ess < good_ess]
+  n_low_tail_ess = length(low_tail_ess)
+  # proportion of too low bulk ESS
+  prop_low_tail_ess = n_low_tail_ess / n_model_variables
+  return(prop_low_tail_ess)
+}
