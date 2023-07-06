@@ -3,8 +3,7 @@
 # setup ####
 # load packages 
 if(!requireNamespace("pacman")) install.packages("pacman")
-pacman::p_load(here, tictoc, future, purrr, parallel, 
-               brms, Matrix, tidyverse, cmdstanr)
+pacman::p_load(here, tictoc, future, purrr, parallel, brms, Matrix, tidyverse)
 
 # set seed
 set.seed(42424242)
