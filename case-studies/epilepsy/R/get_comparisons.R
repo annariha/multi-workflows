@@ -6,10 +6,6 @@ if(!requireNamespace("pacman")) install.packages("pacman")
 pacman::p_load(here, tictoc, future, furrr, purrr, parallel, 
                brms, Matrix, tidyverse, cmdstanr, spatstat)
 
-# check and create dir if needed
-filedir = here::here("case-studies", "epilepsy", "results")
-if (!dir.exists(filedir)) {dir.create(filedir)}
-
 # set seed
 set.seed(42424242)
 
