@@ -46,7 +46,9 @@ toc()
 
 # add draws df ####
 models_combs_df <- models_combs_df |>
+  mutate(model_id = paste0("Model ", row_number())) |>
   mutate(draws_df = purrr::map(purrr::map(modelfits, pluck), posterior::as_draws_df))
+         
 
 # save df with modelfits ####
 filedir = here::here("case-studies", "epilepsy", "results")
