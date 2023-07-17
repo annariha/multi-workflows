@@ -20,7 +20,7 @@ models_combs_df <- readr::read_rds(here::here("case-studies", "epilepsy", "resul
 
 # add more info to df with brms and custom functions ####
 tic()
-models_combs_df <- tibble(models_combs_df) |>
+models_combs_df <- models_combs_df |>
   mutate(# sampling diagnostics
          ndivtrans = purrr::map_dbl(purrr::map(modelfits, pluck), get_ndivtrans),
          rhattrt = purrr::map_dbl(purrr::map(modelfits, pluck), get_rhat_trt),
@@ -35,3 +35,6 @@ models_combs_df <- tibble(models_combs_df) |>
          # number of model parameters
          nvars = purrr::map_dbl(purrr::map(modelfits, pluck), brms::nvariables))
 toc()
+
+# save results ####
+readr::write_rds(models_combs_df, here::here("case-studies", "epilepsy", "results", "models_combs_df.rds"))
