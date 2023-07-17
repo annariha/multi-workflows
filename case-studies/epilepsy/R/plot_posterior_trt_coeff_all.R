@@ -43,7 +43,7 @@ plot_posterior_trt_default_all <- ggplot(plot_df_trt_default_all, aes(x = poster
   #xlim(-1.3, 0.8) + 
   xlab("Coefficient for treatment") +
   geom_vline(xintercept = 0) + 
-  scale_color_manual(values=c("red", "black")) + 
+  scale_color_manual(values=c("yes" = "red", "no" = "black")) +  
   theme(axis.text.y=element_text(size=4),
         axis.title.y = element_blank(),
         legend.position = "none")
