@@ -67,6 +67,10 @@ comparison_df_randint <- readr::read_rds(here::here("case-studies", "epilepsy", 
 
 # add elpd diff & PBMA weights etc. to df for plotting ####
 
+# turn models df to dataframe and give rownames for merging
+models_combs_df <- as.data.frame(models_combs_df)
+rownames(models_combs_df) <- models_combs_df$modelnames
+
 # add loo comparison table with default LOO
 df_default = merge(models_combs_df, comparison_df_default, by=0)
 # set row names to model names
