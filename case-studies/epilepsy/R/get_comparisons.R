@@ -33,7 +33,7 @@ loos_intloo <- c(loos_randint, loos_without_randint)
 
 # compare models with loo ####
 comparison_df_default <- loo::loo_compare(loos_default)
-comparison_df_randint <- loo::loo_compare(loos_intloo)
+comparison_df_intloo <- loo::loo_compare(loos_intloo)
 
 # add sum of Pareto k's > 0.7 for all models with default LOO ####
 comparison_df_default <- merge(comparison_df_default, 
@@ -46,24 +46,46 @@ comparison_df_default <- comparison_df_default[2:length(comparison_df_default)]
 # set descriptive name for new column 
 colnames(comparison_df_default)[ncol(comparison_df_default)] <- "n_high_pareto_ks"
 
-# add sum of Pareto k's > 0.7 for all models with integrated LOO ####
-comparison_df_randint <- merge(comparison_df_randint, 
-                               purrr::map_dbl(purrr::map(loos_intloo, ~.x$diagnostics$pareto_k), ~sum(.x>0.7)), 
+# add MCSE of elpd for all models with default LOO ####
+comparison_df_default <- merge(comparison_df_default, 
+                               purrr::map_dbl(loos_default, loo::mcse_loo), 
                                by="row.names") 
 # set row names to model names
-rownames(comparison_df_randint) <- comparison_df_randint$Row.names
+rownames(comparison_df_default) <- comparison_df_default$Row.names
 # select everything despite Row.names
-comparison_df_randint <- comparison_df_randint[2:length(comparison_df_randint)]
+comparison_df_default <- comparison_df_default[2:length(comparison_df_default)]
 # set descriptive name for new column 
-colnames(comparison_df_randint)[ncol(comparison_df_randint)] <- "n_high_pareto_ks"
+colnames(comparison_df_default)[ncol(comparison_df_default)] <- "mcse_elpd_loo"
+
+# add sum of Pareto k's > 0.7 for all models with integrated LOO ####
+comparison_df_intloo <- merge(comparison_df_intloo, 
+                              purrr::map_dbl(purrr::map(loos_intloo, ~.x$diagnostics$pareto_k), ~sum(.x>0.7)), 
+                              by="row.names") 
+# set row names to model names
+rownames(comparison_df_intloo) <- comparison_df_intloo$Row.names
+# select everything despite Row.names
+comparison_df_intloo <- comparison_df_intloo[2:length(comparison_df_intloo)]
+# set descriptive name for new column 
+colnames(comparison_df_intloo)[ncol(comparison_df_intloo)] <- "n_high_pareto_ks"
+
+# add MCSE of elpd for all models with integrated LOO ####
+comparison_df_intloo <- merge(comparison_df_intloo, 
+                              purrr::map_dbl(loos_intloo, loo::mcse_loo),
+                              by="row.names") 
+# set row names to model names
+rownames(comparison_df_intloo) <- comparison_df_intloo$Row.names
+# select everything despite Row.names
+comparison_df_intloo <- comparison_df_intloo[2:length(comparison_df_intloo)]
+# set descriptive name for new column 
+colnames(comparison_df_intloo)[ncol(comparison_df_intloo)] <- "mcse_elpd_loo"
 
 # store intermediate results ####
 readr::write_rds(comparison_df_default, here::here("case-studies", "epilepsy", "results", "comparison_df_default.rds"))
-readr::write_rds(comparison_df_randint, here::here("case-studies", "epilepsy", "results", "comparison_df_randint.rds"))
+readr::write_rds(comparison_df_intloo, here::here("case-studies", "epilepsy", "results", "comparison_df_intloo.rds"))
 
 # re-load
 comparison_df_default <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "comparison_df_default.rds"))
-comparison_df_randint <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "comparison_df_randint.rds"))
+comparison_df_intloo <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "comparison_df_intloo.rds"))
 
 # add elpd diff & PBMA weights etc. to df for plotting ####
 
@@ -94,7 +116,7 @@ full_df_default <- full_df_default |>
   mutate(loo_computation = rep("default", NROW(full_df_default)))
 
 # add loo comparison table with integrated LOO 
-df_intloo = merge(models_combs_df, comparison_df_randint, by=0)
+df_intloo = merge(models_combs_df, comparison_df_intloo, by=0)
 # set row names to model names
 rownames(df_intloo) <- df_intloo$Row.names
 # select everything despite Row.names
