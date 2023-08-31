@@ -47,7 +47,7 @@ get_one_ecdf_overlay <- function(df, y, model_char = ""){
   
   # create plot
   plot <- ppc_ecdf_overlay(y = y, yrep = yrep[[1]], discrete = TRUE) +
-    scale_x_continuous(limits=c(0,120)) +
+    scale_x_continuous(limits=c(0,110)) +
     labs(subtitle = paste0(modelfamily)) +
     theme(legend.position="none")
   
