@@ -1,4 +1,6 @@
 # fit model for each combination ####
+source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
+source(here::here("case-studies", "epilepsy", "R", "build_brms_formula.R"))
 
 build_fit <- function(row, dataset, ...){
   # for storing results
@@ -24,9 +26,6 @@ build_fit <- function(row, dataset, ...){
     refresh = 0
   ) 
 }
-
-#test <- combinations_df[3,]
-#test_fit <- build_fit(test, dataset = brms::epilepsy)
 
 build_fit_rstan <- function(row, ...){
   brm(
