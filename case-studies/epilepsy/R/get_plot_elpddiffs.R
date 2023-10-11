@@ -1,4 +1,4 @@
-get_plot_elpddiffs <- function(df, subtitle_char = ""){
+get_plot_elpddiffs <- function(df, subtitle_char = "", ylabel_char = ""){
   # set ggplot theme
   theme_set(theme_bw() +
               theme(panel.grid.major = element_blank(),
@@ -18,9 +18,9 @@ get_plot_elpddiffs <- function(df, subtitle_char = ""){
     geom_vline(xintercept = 0, linetype = "dashed", color = "gray") + 
     labs(subtitle = subtitle_char) + 
     xlab("$Delta widehat textrmelpd$") +
+    ylab(ylabel_char) + 
     scale_color_manual(values=c("yes" = "red", "no" = "black")) + 
-    scale_shape_manual(values=c("poisson" = 1, "negbinomial" = 6)) +
-    theme(axis.title.y = element_blank(), legend.position = "none")
+    scale_shape_manual(values=c("poisson" = 1, "negbinomial" = 6))
   
   return(plot_elpddiffs)
 }
