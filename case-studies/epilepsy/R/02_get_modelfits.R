@@ -14,6 +14,7 @@ options(mc.cores = nc)
 
 # load functions
 source(here::here("case-studies", "epilepsy", "R", "build_name.R"))
+source(here::here("case-studies", "epilepsy", "R", "build_formula_string.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_brms_formula.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_fit.R"))
 
@@ -22,7 +23,8 @@ source(here::here("case-studies", "epilepsy", "R", "01_get_combinations.R"))
 
 # build df with combinations, names, fits ####
 models_combs_df <- combinations_df |>
-  mutate(modelnames = apply(combinations_df, 1, build_name))
+  mutate(modelnames = apply(combinations_df, 1, build_name)) |>
+  mutate(formula = apply(combinations_df, 1, build_formula_string))
 
 # if needed: save stancode for each model ####
 #helper_data <- combinations_df |>
@@ -32,7 +34,8 @@ models_combs_df <- combinations_df |>
 #  mutate(save_model = here::here("case-studies", "epilepsy", "Stan", paste0("model_", 1:NROW(combinations_df), ".stan")))
 #purrr::pmap(helper_data, brms::make_stancode)
 
-# fit models ####
+# workhorse: fit models ####
+# takes around 5029.47 sec
 tic()
 future::plan(multisession)
 models_combs_df$modelfits <- combinations_df |>
@@ -49,7 +52,6 @@ models_combs_df <- models_combs_df |>
   mutate(model_id = paste0("Model ", row_number())) |>
   mutate(draws_df = purrr::map(purrr::map(modelfits, pluck), posterior::as_draws_df))
          
-
 # save df with modelfits ####
 filedir = here::here("case-studies", "epilepsy", "results")
 if (!dir.exists(filedir)) {dir.create(filedir)}
