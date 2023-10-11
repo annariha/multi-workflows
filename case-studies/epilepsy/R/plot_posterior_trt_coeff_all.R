@@ -5,13 +5,6 @@
 if(!requireNamespace("pacman")) install.packages("pacman")
 pacman::p_load(here, tictoc, tidyverse, ggplot2, ggdist, patchwork)
 
-# set ggplot theme
-theme_set(theme_bw() +
-            theme(panel.grid.major = element_blank(),
-                  panel.grid.minor = element_blank(),
-                  strip.background = element_blank(),
-                  panel.background = element_blank()))
-
 # load scripts
 source(here::here("case-studies", "epilepsy", "R", "save_tikz_plot.R"))
 source(here::here("case-studies", "epilepsy", "R", "get_plot_posterior_trt_coeffs.R"))
@@ -56,9 +49,9 @@ df_plot_trt_default_all <- df |>
   select(posterior_draws_trt, mean_post_trt, model_id, family, high_pareto_ks) |>
   unnest(posterior_draws_trt)
 
-readr::write_rds(plot_df_trt_default_all, here::here("case-studies", "epilepsy", "results", "plot_df_trt_default_all.rds"))
+readr::write_rds(df_plot_trt_default_all, here::here("case-studies", "epilepsy", "results", "plot_df_trt_default_all.rds"))
 
-plot_posterior_trt_default_all <- get_plot_posterior_trt_coeffs(plot_df_trt_default_all)
+plot_posterior_trt_default_all <- get_plot_posterior_trt_coeffs(df_plot_trt_default_all)
 plot_posterior_trt_default_all
 
 save_tikz_plot(plot = plot_posterior_trt_default_all, 
