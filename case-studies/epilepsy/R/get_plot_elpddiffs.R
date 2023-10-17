@@ -1,10 +1,14 @@
-get_plot_elpddiffs <- function(df, subtitle_char = "", ylabel_char = ""){
+get_plot_elpddiffs <- function(df, pointsize = 4, subtitle_char = "", ylabel_char = ""){
   # set ggplot theme
   theme_set(theme_bw() +
               theme(panel.grid.major = element_blank(),
                     panel.grid.minor = element_blank(),
                     strip.background = element_blank(),
-                    panel.background = element_blank()))
+                    panel.background = element_blank(),
+                    text = element_text(size=8),
+                    plot.title = element_text(size=8),
+                    axis.title = element_text(size=8),
+                    axis.text = element_text(size=8)))
   
   # prepare data for plotting 
   df_plot <- df |>
@@ -14,7 +18,7 @@ get_plot_elpddiffs <- function(df, subtitle_char = "", ylabel_char = ""){
   
   # create plot 
   plot_elpddiffs <- ggplot(data = df_plot, aes(elpd_diff, model_id, col = high_pareto_ks, shape = family)) +
-    geom_pointrange(aes(xmin=elpd_diff-se_diff, xmax=elpd_diff+se_diff)) +
+    geom_pointrange(aes(xmin=elpd_diff-se_diff, xmax=elpd_diff+se_diff), fatten = .5, size = pointsize) + 
     geom_vline(xintercept = 0, linetype = "dashed", color = "gray") + 
     labs(subtitle = subtitle_char) + 
     xlab("$Delta widehat textrmelpd$") +
