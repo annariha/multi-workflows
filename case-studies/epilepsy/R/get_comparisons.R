@@ -13,23 +13,51 @@ set.seed(42424242)
 nc <- detectCores() - 2
 options(mc.cores = nc) 
 
-# load modelfits and loo objects 
+# load helper functions
+source(here::here("case-studies", "epilepsy", "R", "get_comparisons_df.R"))
+
+# load data ####
+
+# model combinations and modelfits 
 models_combs_df <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "models_combs_df.rds"))
+# turn tibble into dataframe
+models_combs_df <- as.data.frame(models_combs_df)
+# row names for merging
+rownames(models_combs_df) <- models_combs_df$modelnames
+
+# load loo object with default PSIS-LOO-CV
 loos_default <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "loos_default.rds"))
-loos_randint <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "loos_randint.rds"))
+# load loo object with default + integrated PSIS-LOO-CV
+loos_intloo <- readr::read_rsd(here::here("case-studies", "epilepsy", "results", "loos_intloo.rds"))
+# load loo object with default + integrated PSIS-LOO-CV and reloo()
+loos_intloo_reloo <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "loos_intloo_reloo.rds"))
 
-# add model names for models with obs level random intercept ####
-modelnames_randint <- models_combs_df |> 
-  # only models with obs-level random intercept
-  filter(obs != "") |>
-  pull(modelnames)
-# set names for loo objects
-names(loos_randint) <- modelnames_randint
+# comparison df for default PSIS-LOO-CV computed loos ####
+full_df_default <- get_comparison_df(models_combs_df, loos_default)
 
-# join with default loos for models without obs-level random intercept ####
-modelnames_without_randint <- dplyr::setdiff(names(loos_default), names(loos_randint))
-loos_without_randint <- loos_default[modelnames_without_randint]
-loos_intloo <- c(loos_randint, loos_without_randint)
+# comparison df for default + integrated PSIS-LOO-CV computed loos ####
+full_df_intloo <- get_comparison_df(models_combs_df, loos_intloo)
+
+# comparison df for default + integrated PSIS-LOO-CV and reloo() computed loos ####
+full_df_intloo_reloo <- get_comparison_df(models_combs_df, loos_intloo_reloo)
+
+# store results for plotting scripts ####
+readr::write_rds(full_df_default, here::here("case-studies", "epilepsy", "results", "epi-2", "full_df_elpddiff_loobb_default.rds"))
+readr::write_rds(full_df_elpddiff_pbma_intloo, here::here("case-studies", "epilepsy", "results", "epi-2", "full_df_elpddiff_loobb_intloo.rds"))
+readr::write_rds(full_df_elpddiff_pbma_intloo_reloo, here::here("case-studies", "epilepsy", "results", "epi-2", "full_df_elpddiff_loobb_intloo_reloo.rds"))
+
+# test for non-zero PBMA weights 
+test <- full_df_default |> 
+  select(model_id, modelnames, mcse_elpd_loo, elpd_diff, se_diff, pbma_plus_weight, pbma_weight) |>
+  mutate(is_zero_pbma_plus = ifelse(pbma_plus_weight < 0.01, "TRUE", "FALSE")) |>
+  select(model_id, mcse_elpd_loo, elpd_diff, se_diff, pbma_plus_weight, is_zero_pbma_plus)
+
+# .Machine$double.eps ^ 0.2
+
+test |>
+  arrange(elpd_diff) |>
+  filter(abs(elpd_diff) < 4) |>
+  select(model_id, mcse_elpd_loo, elpd_diff, pbma_plus_weight, is_zero_pbma_plus)
 
 # compare models with loo ####
 comparison_df_default <- loo::loo_compare(loos_default)
@@ -83,26 +111,26 @@ colnames(comparison_df_intloo)[ncol(comparison_df_intloo)] <- "mcse_elpd_loo"
 readr::write_rds(comparison_df_default, here::here("case-studies", "epilepsy", "results", "comparison_df_default.rds"))
 readr::write_rds(comparison_df_intloo, here::here("case-studies", "epilepsy", "results", "comparison_df_intloo.rds"))
 
-# re-load
+# re-load data ####
 comparison_df_default <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "comparison_df_default.rds"))
 comparison_df_intloo <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "comparison_df_intloo.rds"))
 
-# add elpd diff & PBMA weights etc. to df for plotting ####
-
-# turn models df to dataframe and give rownames for merging
-models_combs_df <- as.data.frame(models_combs_df)
-rownames(models_combs_df) <- models_combs_df$modelnames
-
-# add loo comparison table with default LOO
+# add loo comparison table with default LOO ####
 df_default = merge(models_combs_df, comparison_df_default, by=0)
 # set row names to model names
 rownames(df_default) <- df_default$Row.names
 # select everything despite Row.names
 df_default = df_default[2:length(df_default)]
 
-# PBMA weights with default LOO 
-pbma_weights_default = loo_model_weights(loos_default, method="pseudobma")
-pbma_df_default = data.frame(pbma_weight=as.numeric(pbma_weights_default), row.names=names(pbma_weights_default))
+# add PBMA+ and PBMA weights with default LOO ####
+# likely to be better, based on experiments improves model averaging, less weights close to zero and 1 
+pbma_plus_weights_default = loo_model_weights(loos_default, method="pseudobma")
+# likely to be more extreme compared to BB=TRUE, when BB is FALSE we should get same ranking order
+pbma_weights_default = loo_model_weights(loos_default, method="pseudobma", BB = FALSE)
+
+pbma_df_default = data.frame(pbma_plus_weight=as.numeric(pbma_plus_weights_default),
+                             pbma_weight = as.numeric(pbma_weights_default),
+                             row.names=names(pbma_weights_default))
 
 # add PBMA weights with default LOO
 full_df_default = merge(df_default, pbma_df_default, by=0)
@@ -115,7 +143,7 @@ full_df_default = full_df_default[2:length(full_df_default)]
 full_df_default <- full_df_default |>
   mutate(loo_computation = rep("default", NROW(full_df_default)))
 
-# add loo comparison table with integrated LOO 
+# add loo comparison table with integrated LOO ####
 df_intloo = merge(models_combs_df, comparison_df_intloo, by=0)
 # set row names to model names
 rownames(df_intloo) <- df_intloo$Row.names
