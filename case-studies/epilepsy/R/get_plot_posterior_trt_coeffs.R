@@ -1,5 +1,5 @@
-get_plot_posterior_trt_coeffs <- function(df, ytextsize = 8){
-  # gradient interval plot of all models in df, color indicates computational issues
+get_plot_posterior_trt_coeffs <- function(df, ytextsize = 7){
+  # gradient interval plot of all models in df
   
   # set ggplot theme
   theme_set(theme_bw() +
@@ -7,10 +7,10 @@ get_plot_posterior_trt_coeffs <- function(df, ytextsize = 8){
                     panel.grid.minor = element_blank(),
                     strip.background = element_blank(),
                     panel.background = element_blank(),
-                    text = element_text(size=8),
-                    plot.title = element_text(size=8),
-                    axis.title = element_text(size=8),
-                    axis.text = element_text(size=8)))
+                    text = element_text(size=7),
+                    plot.title = element_text(size=7),
+                    axis.title = element_text(size=7),
+                    axis.text = element_text(size=7)))
   
   plot_posterior_trt_coeffs <- ggplot(df, aes(x = posterior_draws_trt, y = model_id)) + 
     stat_pointinterval(.width = c(.5, .95)) +
