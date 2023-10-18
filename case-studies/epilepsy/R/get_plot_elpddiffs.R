@@ -5,10 +5,10 @@ get_plot_elpddiffs <- function(df, pointsize = 4, subtitle_char = "", ylabel_cha
                     panel.grid.minor = element_blank(),
                     strip.background = element_blank(),
                     panel.background = element_blank(),
-                    text = element_text(size=8),
-                    plot.title = element_text(size=8),
-                    axis.title = element_text(size=8),
-                    axis.text = element_text(size=8)))
+                    text = element_text(size=7),
+                    plot.title = element_text(size=7),
+                    axis.title = element_text(size=7),
+                    axis.text = element_text(size=7)))
   
   # prepare data for plotting 
   df_plot <- df |>
