@@ -16,7 +16,7 @@ options(mc.cores = nc)
 source(here::here("case-studies", "epilepsy", "R", "save_tikz_plot.R"))
 
 # load data
-df_reduced <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "epi_1_df_reduced.rds"))
+full_df_reduced <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "epi-1", "df_with_loos_loobb.rds"))
   
 get_one_ecdf_overlay <- function(df, y, model_char = ""){
   # set ggplot theme
@@ -24,7 +24,11 @@ get_one_ecdf_overlay <- function(df, y, model_char = ""){
               theme(panel.grid.major = element_blank(),
                     panel.grid.minor = element_blank(),
                     strip.background = element_blank(),
-                    panel.background = element_blank()))
+                    panel.background = element_blank(),
+                    text = element_text(size=7),
+                    plot.title = element_text(size=7),
+                    axis.title = element_text(size=7),
+                    axis.text = element_text(size=7)))
   
   # bayesplot colour scheme
   bayesplot::color_scheme_set("gray")
@@ -35,13 +39,13 @@ get_one_ecdf_overlay <- function(df, y, model_char = ""){
     pull(ypred)
   
   # get model family
-  modelfamily <- df_reduced |>
+  modelfamily <- df |>
     filter(model_id == model_char) |>
     mutate(family = recode(family, "poisson" = "Poisson", "negbinomial" = "Negative Binomial")) |>
     pull(family)
   
   # get model name 
-  modelname_long <- df_reduced |>
+  modelname_long <- df |>
     filter(model_id == model_char) |>
     pull(modelnames)
   
@@ -60,14 +64,14 @@ get_one_ecdf_overlay <- function(df, y, model_char = ""){
   return(plot)
 }
 
-plot_ppc_ecdf_model_22 <- get_one_ecdf_overlay(df_reduced, brms::epilepsy$count, model_char = "Model 22")
-plot_ppc_ecdf_model_21 <- get_one_ecdf_overlay(df_reduced, brms::epilepsy$count, model_char = "Model 21")
+plot_ppc_ecdf_model_22 <- get_one_ecdf_overlay(full_df_reduced, brms::epilepsy$count, model_char = "Model 22")
+plot_ppc_ecdf_model_21 <- get_one_ecdf_overlay(full_df_reduced, brms::epilepsy$count, model_char = "Model 21")
 plot_ppc_ecdf_model_22_21 <- plot_ppc_ecdf_model_22 | plot_ppc_ecdf_model_21
 plot_ppc_ecdf_model_22_21
 
 save_tikz_plot(plot = plot_ppc_ecdf_model_22_21, 
-               width = 5,
-               filename = here::here("case-studies", "epilepsy", "figures", "plot_ppc_ecdf_model_22_21.tex")
+               width = 6.5,
+               filename = here::here("case-studies", "epilepsy", "figures", "epi-1", "plot_ppc_ecdf_model_22_21.tex")
 )
 
 cowplot::save_plot(here::here("case-studies", "epilepsy", "figures", "plot_ppc_ecdf_model_22_21.png"), 
