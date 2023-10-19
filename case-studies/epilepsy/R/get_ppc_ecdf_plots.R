@@ -70,7 +70,7 @@ plot_ppc_ecdf_model_22_21 <- plot_ppc_ecdf_model_22 | plot_ppc_ecdf_model_21
 plot_ppc_ecdf_model_22_21
 
 save_tikz_plot(plot = plot_ppc_ecdf_model_22_21, 
-               width = 6.5,
+               width = 5,
                filename = here::here("case-studies", "epilepsy", "figures", "epi-1", "plot_ppc_ecdf_model_22_21.tex")
 )
 
