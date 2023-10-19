@@ -12,6 +12,7 @@ get_plot_elpddiffs <- function(df, pointsize = 4, subtitle_char = "", ylabel_cha
   
   # prepare data for plotting 
   df_plot <- df |>
+    mutate(high_pareto_ks = ifelse(n_high_pareto_ks > 0, "yes", "no")) |>
     arrange(elpd_diff) |>
     mutate(model_id = forcats::fct_inorder(model_id)) |>
     select(modelnames, family, elpd_diff, se_diff, n_high_pareto_ks, model_id, high_pareto_ks)
