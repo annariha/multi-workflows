@@ -12,6 +12,7 @@ get_plot_loo_bb_weights <- function(df, subtitle_char = ""){
   
   # prepare data for plotting 
   plot_df <- df |>
+    mutate(high_pareto_ks = ifelse(n_high_pareto_ks >= 1, "yes", "no")) |>
     arrange(elpd_diff) |>
     mutate(model_id = forcats::fct_inorder(model_id)) |>
     select(modelnames, family, elpd_diff, se_diff, loo_bb_weight, n_high_pareto_ks, model_id, high_pareto_ks)
