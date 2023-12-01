@@ -1,0 +1,19 @@
+stanfile_path: "stan/"
+compiled_path: "stan/exe/"
+results_path: "results/"
+summary_path: "summary/"
+datasets_path: "data/"
+scripts_path: "scripts/"
+
+scripts:
+  compile: "compile_model.R"
+  fit: "fit_model.R"
+  generate_data: "generate_data.R"
+  summarise: "summarise_results.R"
+
+# Simulation conditions 
+seed: []
+n_chains: ["4"]
+models: ["gaussian"]
+n_obs: ["50", "100", "1000", "10000"]
+n_covars: ["10", "100", "500"]

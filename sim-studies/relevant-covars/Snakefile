@@ -1,0 +1,33 @@
+configfile: "config.yaml"
+
+idxs = range(10)
+stanfiles = ["testlinreg"]
+signal_idxs = range(10)
+
+all_targets = expand("outputs/fit_{idx}_{stanfile}_{signal_idx}.rds", 
+    idx=idxs, 
+    stanfile=stanfiles, 
+    signal_idx=signal_idxs)
+
+rule make_all: 
+    input: all_targets
+
+rule summarise_models: 
+    input: "outputs/fit_{idx}_{stanfile}_{signal_idx}.rds"
+    #output: "outputs/"
+    #script: 
+    
+rule fit_model: 
+    input: "outputs/data_{idx}.rds", "outputs/model_{stanfile}"
+    output: "outputs/fit_{idx}_{stanfile}_{signal_idx}.rds"
+    script: "scripts/fit_model.R"
+    
+rule generate_data:
+    #input: ""
+    output: "outputs/data_{idx}.rds"
+    script: "scripts/generate_data.R"
+    
+rule compile_model: 
+    input: "stan/{stanfile}.stan"
+    output: "outputs/model_{stanfile}"
+    script: "scripts/compile_model.R"
