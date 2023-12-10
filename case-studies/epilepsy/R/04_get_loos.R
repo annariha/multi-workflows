@@ -21,25 +21,24 @@ options(mc.cores = nc)
 source(here::here("case-studies", "epilepsy", "R", "build_loo.R"))
 source(here::here("case-studies", "epilepsy", "R", "build_loglik.R"))
 
-# load modelfits 
+# load modelfits with evaluated computation obtained with 03_get_draws_info.R
 models_combs_df <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "models_combs_df.rds"))
 
-# default loos for all models ####
-
-# for testing
-# models_combs_df <- models_combs_df |>
-# dplyr::slice_sample(n = 5)
-
+# default PSIS-LOO-CV for all models ####
 tic()
 future::plan(multisession, workers = parallel::detectCores() - 2)
 loos_default <- models_combs_df |>
+  # for testing
+  # slice_sample(n = 5) |>
   group_nest(row_number()) |>
   pull(data) |>
   furrr::future_map(~build_loos(.x, dataset = brms::epilepsy), .options=furrr_options(seed=TRUE))
 toc()
 
+#closeAllConnections()
+
 # set names for loo objects
 names(loos_default) <- models_combs_df$modelnames
 
-# store intermediate results ####
-readr::write_rds(loos_default, here::here("case-studies", "epilepsy", "results", "loos_default.rds"))
+# store results ####
+readr::write_rds(loos_default, here::here("case-studies", "epilepsy", "results", "loos_default_test.rds"))
