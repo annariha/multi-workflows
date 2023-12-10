@@ -24,8 +24,9 @@ df2 = data.frame(
 df = rbind(df1, df2)
 
 # set ggplot theme
-theme_set(theme_bw() +
-            theme(panel.grid.major = element_blank(),
+theme_set(theme_classic() +
+            theme(legend.position = "none",
+                  panel.grid.major = element_blank(),
                   panel.grid.minor = element_blank(),
                   strip.background = element_blank(),
                   panel.background = element_blank(),
@@ -44,13 +45,12 @@ plot_birthdays_funnel_example <- ggplot(df, aes(treatment, log_scale, color=as.f
   scale_color_manual(values=c("0" = "black", "1" = "red")) + 
   xlab("Effect of Halloween") + 
   ylab("log local shrinkage") +
-  facet_grid(~factor(group, levels=c("manual", "adapted")), labeller = as_labeller(parameterisation_names)) +
-  theme(legend.position = "none") +
+  facet_grid(~factor(group, levels=c("manual", "adapted")), labeller = as_labeller(parameterisation_names))+
   theme(panel.spacing.x = unit(1, "lines"))
 
 plot_birthdays_funnel_example
 
 # save as tikz ####
 save_tikz_plot(plot = plot_birthdays_funnel_example, 
-               width = 5,
+               width = 5.5,
                filename = here::here("case-studies", "birthdays", "figures", "plot_birthdays_funnel_example.tex"))
