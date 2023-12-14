@@ -1,7 +1,8 @@
-get_plot_elpddiffs <- function(df, pointsize = 4, subtitle_char = "", ylabel_char = ""){
+get_plot_elpddiffs <- function(df, pointsize = 3, subtitle_char = "", ylabel_char = ""){
   # set ggplot theme
-  theme_set(theme_bw() +
-              theme(panel.grid.major = element_blank(),
+  theme_set(theme_classic() +
+              theme(legend.position = "none", 
+                    panel.grid.major = element_blank(),
                     panel.grid.minor = element_blank(),
                     strip.background = element_blank(),
                     panel.background = element_blank(),
@@ -22,10 +23,10 @@ get_plot_elpddiffs <- function(df, pointsize = 4, subtitle_char = "", ylabel_cha
     geom_pointrange(aes(xmin=elpd_diff-se_diff, xmax=elpd_diff+se_diff), fatten = .5, size = pointsize) + 
     geom_vline(xintercept = 0, linetype = "dashed", color = "gray") + 
     labs(subtitle = subtitle_char) + 
-    xlab("$Delta widehat textrmelpd$") +
+    xlab("$Delta widehatmathrmelpd$") +
     ylab(ylabel_char) + 
     scale_color_manual(values=c("yes" = "red", "no" = "black")) + 
-    scale_shape_manual(values=c("poisson" = 1, "negbinomial" = 6))
+    scale_shape_manual(values=c("poisson" = 1, "negbinomial" = 6)) 
   
   return(plot_elpddiffs)
 }
