@@ -62,7 +62,7 @@ plot_posterior_trt_combined
 
 save_tikz_plot(plot = plot_posterior_trt_combined, 
                width = 5.5,
-               filename = here::here("case-studies", "epilepsy", "figures", "epi-2", "plot_posterior_trt_default_vs_filtered.tex"))
+               filename = here::here("case-studies", "epilepsy", "figures", "epi-2", "plot_extended_posterior_trt_default_vs_filtered.tex"))
 
 # not included #################################################################
 
