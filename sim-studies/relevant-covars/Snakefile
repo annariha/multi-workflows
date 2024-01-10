@@ -2,29 +2,43 @@ configfile: "config.yaml"
 
 idxs = range(10)
 stanfiles = ["testlinreg"]
-signal_idxs = range(10)
+signal_idxs = range(1,11)
+#n_obs = [25, 50, 100, 200]
+#signal_to_noise = []
 
-all_targets = expand("outputs/fit_{idx}_{stanfile}_{signal_idx}.rds", 
-    idx=idxs, 
-    stanfile=stanfiles, 
-    signal_idx=signal_idxs)
+all_targets = expand("outputs/plots/plot_elpddiff_loobb_pbma_{idx}.png", idx=idxs)
 
 rule make_all: 
     input: all_targets
 
-rule summarise_models: 
-    input: "outputs/fit_{idx}_{stanfile}_{signal_idx}.rds"
+rule create_plots:
+    input: "outputs/comparison_plot_df_{idx}.rds"
+    output: "outputs/plots/plot_elpddiff_loobb_pbma_{idx}.png"
+    script: "scripts/create_plots.R"
+        
+rule compare_models: 
+    input: expand("outputs/loos/loo_{{idx}}_{stanfile}_{signal_idx}.rds", stanfile = stanfiles, signal_idx = signal_idxs)
+    output: "outputs/comparison_plot_df_{idx}.rds"
+    script: "scripts/compare_models.R"
+    
+rule summarise_model: 
+    input: "outputs/fits/fit_{idx}_{stanfile}_{signal_idx}.rds"
     #output: "outputs/"
     #script: 
+
+rule evaluate_model: 
+    input: "outputs/datasets/data_{idx}.rds", "outputs/model_{stanfile}", "outputs/fits/fit_{idx}_{stanfile}_{signal_idx}.rds"
+    output: "outputs/loos/loo_{idx}_{stanfile}_{signal_idx}.rds"
+    script: "scripts/evaluate_model.R"
     
 rule fit_model: 
-    input: "outputs/data_{idx}.rds", "outputs/model_{stanfile}"
-    output: "outputs/fit_{idx}_{stanfile}_{signal_idx}.rds"
+    input: "outputs/datasets/data_{idx}.rds", "outputs/model_{stanfile}"
+    output: "outputs/fits/fit_{idx}_{stanfile}_{signal_idx}.rds"
     script: "scripts/fit_model.R"
     
 rule generate_data:
     #input: ""
-    output: "outputs/data_{idx}.rds"
+    output: "outputs/datasets/data_{idx}.rds"
     script: "scripts/generate_data.R"
     
 rule compile_model: 
