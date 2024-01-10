@@ -19,4 +19,5 @@ fit <- model$sample(data = data,
                    parallel_chains = 4, 
                    refresh = 500)
 
-saveRDS(fit, file = snakemake@output[[1]]) 
+# use wrapper around base::saveRDS() to ensure all posterior draws and diagnostics are saved
+fit$save_object(file = snakemake@output[[1]]) 
