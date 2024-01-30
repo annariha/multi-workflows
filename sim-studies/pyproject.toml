@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "sim-studies"
+version = "0.1.0"
+description = ""
+authors = ["Anna Elisabeth Riha <e.riha@posteo.de>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+snakemake = "^7.32.4"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
