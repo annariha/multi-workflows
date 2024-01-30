@@ -5,6 +5,7 @@ library(ggExtra)
 library(patchwork)
 library(cowplot)
 
+# to run script with and without snakemake object available
 if (exists("snakemake")){
   plot_df <- readRDS(snakemake@input[[1]])
   plot_png_file <- snakemake@output[[1]]
