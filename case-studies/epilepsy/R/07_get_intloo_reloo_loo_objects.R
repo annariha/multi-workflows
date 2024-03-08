@@ -16,7 +16,7 @@ options(mc.cores = nc)
 # load modelfits with evaluated computation obtained with 03_get_draws_info.R
 models_combs_df <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "models_combs_df.rds"))
 # load loo-object with integrated PSIS-LOO-CV obtained with 06_get_intloo_loo_objects.R
-loos_intloo <- readr::read_rds(here::here(("case-studies", "epilepsy", "results", ""))
+loos_intloo <- readr::read_rds(here::here(("case-studies", "epilepsy", "results", "loos_intloo.rds"))
   
 # reduce df to run reloo() for models with remaining high Pareto k-hats 
 df_for_reloo <- tibble(
