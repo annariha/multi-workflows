@@ -1,6 +1,5 @@
 #! /usr/bin/Rscript --vanilla
 
-# setup ####
 # load packages 
 if(!requireNamespace("pacman")) install.packages("pacman")
 
@@ -24,11 +23,11 @@ outcome_str <- "count"
 combinations_df <- expand.grid(
   family = names(list(poisson = poisson(), negbinomial = negbinomial())),
   prior = list(brms_default = "NULL", brms_horseshoe = "horseshoe(3)"),
-  # fixed effects 
+  # population-level effects 
   Trt = c("", "Trt"), 
   zBase = c("", "zBase"),
   zAge = c("", "zAge"),
-  # random effects
+  # varying effects
   patient = c("", "(1 | patient)"),
   visit = c("", "(1 | visit)"),
   obs = c("", "(1 | obs)")
