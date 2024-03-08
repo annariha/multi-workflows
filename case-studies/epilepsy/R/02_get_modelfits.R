@@ -40,7 +40,7 @@ tic()
 future::plan(multisession)
 models_combs_df$modelfits <- combinations_df |>
   # for testing
-  #combinations_df[sample(NROW(combinations_df), 5), ] |>
+  #slice_sample(n=5)|>
   group_nest(row_number()) |>
   pull(data) |>
   furrr::future_map(~build_fit(.x, dataset = brms::epilepsy), 
