@@ -78,6 +78,8 @@ build_loglik <- function(row, ...){
   return(log_lik_array)
 }
 
+# rel.tol = .Machine$double.eps^0.25 translates to accuracy of three decimal points 
+
 # set seed
 #set.seed(42424242)
 # test for one model
@@ -165,8 +167,8 @@ build_loglik_2 <- function(row, ...){
         }
         #print(paste0("Iteration: ", i, " Observation: ", j, " sd_obs: ", sd_obs, " linpreds: ", linpreds_minus_re, " y: ", y))
         log_lik[i,j] <- log(integrate(integrand, 
-                                      lower = -Inf,
-                                      upper = Inf,
+                                      lower = -Inf, #try: -9, -6 for faster comp. since tails of N(.,.) go down fast 
+                                      upper = Inf, #try: 9, 6
                                       sd_obs = sd_obs,
                                       y = y,
                                       linpreds_minus_re = linpreds_minus_re)$value)
