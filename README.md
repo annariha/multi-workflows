@@ -5,7 +5,7 @@ The paper is available as a preprint on arXiv.
 
 There are three case studies in **case-studies**:
 
-- **epilepsy/epi-1**: iterative filtering for a set of models for analysing treatment effects of anti-convulsant therapy with data $\texttt{brms::epilepsy}$.
+- **epilepsy/epi-1**: iterative filtering for a set of models for analysing treatment effects of anti-convulsant therapy with data $\texttt{brms::epilepsy}$, previously analysed, for example, by Thall and Vail (1990) and Breslow and Clayton (1993).
 The data contains $236$ observations. 
 - **epilepsy/epi-2**: extending the filtered set of models from **epi-1** by including varying effects on the level of each visit, patient and observation and applying iterative filtering to the extended set of models 
 - **birthdays**: iterative filtering for a set of models of varying complexity for the registered number of daily births in the USA using natality data from the National Vital Statistics System provided by Google BigQuery and exported by Chris Mulligan and Robert Kern. 
