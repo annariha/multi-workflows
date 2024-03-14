@@ -10,10 +10,22 @@ pacman::p_load(here, tictoc, tidyverse, ggplot2, ggdist, patchwork)
 
 # load helper functions
 source(here::here("case-studies", "epilepsy", "R", "get_plot_posterior_trt_coeffs.R"))
-source(here::here("case-studies", "epilepsy", "R", "save_tikz_plot.R"))
+source(here::here("R", "save_tikz_plot.R"))
 
 # load comparisons df obtained with epi-1/get_comparisons_incl_plots.R
 full_comparisons_df_reduced <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "epi-1", "full_comparisons_df_reduced.rds"))
+
+# set ggplot theme
+fontsize <- 8
+theme_set(theme_classic() +
+            theme(panel.grid.major = element_blank(),
+                  panel.grid.minor = element_blank(),
+                  strip.background = element_blank(),
+                  panel.background = element_blank(),
+                  text = element_text(size=fontsize),
+                  plot.title = element_text(size=fontsize),
+                  axis.title = element_text(size=fontsize),
+                  axis.text = element_text(size=fontsize)))
 
 # plot posterior for coefficient of treatment for all models ####
 plot_df <- full_comparisons_df_reduced |>
@@ -60,19 +72,6 @@ plot_df_indist <- full_comparisons_df_reduced |>
   select(posterior_draws_trt, median_post_trt, model_id, family, high_pareto_ks) |>
   unnest(posterior_draws_trt)
 
-# set ggplot theme
-theme_set(theme_classic() +
-            theme(legend.position = "none",
-                  panel.grid.major = element_blank(),
-                  panel.grid.minor = element_blank(),
-                  strip.background = element_blank(),
-                  panel.background = element_blank(),
-                  text = element_text(size=7),
-                  plot.title = element_text(size=7),
-                  axis.title = element_text(size=7),
-                  axis.text = element_text(size=7)))
-
-
 # half eye plot  
 plot_posterior_trt_coeff_indist_reduced <- ggplot(plot_df_indist, aes(x = posterior_draws_trt, y = model_id, shape = family)) + 
   stat_halfeye(.width=c(0.5, 0.95)) +
@@ -90,6 +89,12 @@ plot_posterior_trt_coeff_indist_reduced
 plot_initial_posterior_trt_all_vs_indist <- plot_posterior_trt_coeff_all_reduced | plot_posterior_trt_coeff_indist_reduced
 plot_initial_posterior_trt_all_vs_indist
 
+# preprint format
 save_tikz_plot(plot = plot_initial_posterior_trt_all_vs_indist, 
                width = 5.5,
-               filename = here::here("case-studies", "epilepsy", "figures", "epi-1", "plot_initial_posterior_trt_all_vs_indist.tex"))
+               filename = here::here("case-studies", "epilepsy", "figures", "epi-1", "test_plot_initial_posterior_trt_all_vs_indist.tex"))
+
+# submission format 
+save_tikz_plot(plot = plot_initial_posterior_trt_all_vs_indist, 
+               width = 4.75,
+               filename = here::here("case-studies", "epilepsy", "figures", "epi-1", "submission", "plot_initial_posterior_trt_all_vs_indist.tex"))
