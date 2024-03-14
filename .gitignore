@@ -42,6 +42,10 @@ vignettes/*.pdf
 # case studies 
 case-studies/epilepsy/figures/
 case-studies/epilepsy/figures_poster/
+case-studies/epilepsy/results/
+case-studies/epilepsy/doc/
+case-studies/birthdays/figures/
+case-studies/birthdays/data/
 
 # simulation study outputs 
 sim-studies/irrelevant-covars/outputs/
