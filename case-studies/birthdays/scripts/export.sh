@@ -1,0 +1,4 @@
+cp samples/birthday/32_16_32_1_1_2_2_noncentered/qoi.json data/32_16_32_1_1_2_2_noncentered_qoi.json
+cp samples/birthday/32_16_32_1_1_3_2_noncentered/qoi.json data/32_16_32_1_1_3_2_noncentered_qoi.json
+cp samples/birthday/32_16_32_1_1_3_2_posthoc/qoi.json data/32_16_32_1_1_2_2_posthoc_qoi.json
+cp samples/birthday/32_16_32_1_1_2_2_posthoc/qoi.json data/32_16_32_1_1_3_2_posthoc_qoi.json
