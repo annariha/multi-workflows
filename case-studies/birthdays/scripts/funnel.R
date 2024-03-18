@@ -17,4 +17,6 @@ df2 = data.frame(
 
 df = rbind(df1, df2)
 
-ggplot(df, aes(treatment, log_scale, color=divergent)) + geom_point() + facet_grid(cols=vars(group))
+p = ggplot(df, aes(treatment, log_scale, color=divergent)) + geom_point() + facet_grid(cols=vars(group)) + ylab("log scale")
+
+save_plot(p, snakemake@output[[1]])

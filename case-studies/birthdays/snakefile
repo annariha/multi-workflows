@@ -11,8 +11,28 @@ seeds = [1,2,3,4]
 def sample_runtime_estimate(wildcards, attempt):
     return [-5, 5, 30, 10*60, 100*60][attempt]
 
-full_configs = expand("{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", n1=n1s, n2=n2s, n3=n3s, dow=dows, floating=floatings, doy=doys, likelihood=likelihoods, cfg=cfgs)
-quick_configs = expand("{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", n1=n1s[:1], n2=n2s[:1], n3=n3s[:1], dow=dows[:1], floating=floatings[:1], doy=doys[:1], likelihood=likelihoods, cfg=cfgs)
+configs = dict(
+    full=expand(
+        "{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", 
+        n1=n1s, n2=n2s, n3=n3s, dow=dows, floating=floatings, doy=doys, likelihood=likelihoods, cfg=cfgs
+    ),
+    quick=expand(
+        "{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", 
+        n1=n1s[:1], n2=n2s[:1], n3=n3s[:1], dow=dows[:1], floating=floatings[:1], doy=doys[:1], likelihood=likelihoods, cfg=cfgs
+    ),
+    medium=expand(
+        "{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", 
+        n1=n1s[1:], n2=n2s[1:], n3=n3s[1:], dow=dows[1:], floating=floatings[1:], doy=doys[1:], likelihood=likelihoods[1:], cfg=cfgs
+    )
+)
+
+def export_input(wildcards):
+    full_cfgs = configs[wildcards.which]
+    return expand("output/reloo/{model}/{full_cfg}.json", model=models, full_cfg=full_cfgs)
+
+def treatment_input(wildcards):
+    full_cfgs = configs[dict(quick="quick").get(wildcards.which, "medium")]
+    return ["output/{which}_multiverse.csv"] + expand("output/reloo/{model}/{full_cfg}.json", model=models, full_cfg=full_cfgs)
 
 wildcard_constraints:
     model="[a-z]+", seed="[0-9]+"
@@ -23,20 +43,30 @@ rule quick:
 rule full:
     input: "output/full_multiverse.csv"
 
+rule treatment:
+    input: treatment_input
+    output: "output/plots/{which}_treatment.{ext}"
+    script: "scripts/treatment.R"
+
 rule visualize_elpd:
-    input: "output/{cfg}_multiverse.csv"
-    output: "output/plots/{cfg}_elpd.{ext}"
+    input: "output/{which}_multiverse.csv"
+    output: "output/plots/{which}_elpd.{ext}"
     script: "scripts/elpd.R"
 
-rule quick_export:
-    input: expand("output/reloo/{model}/{full_cfg}.json", model=models, full_cfg=quick_configs)
-    output: "output/quick_multiverse.csv"
-    script: "scripts/export.py"
+rule visualize_funnel:
+    input: "output/bias/birthday/0_0_0_0_0_3_2.json"
+    output: "output/plots/funnel.{ext}"
+    script: "scripts/funnel.R"
 
 rule export:
-    input: expand("output/reloo/{model}/{full_cfg}.json", model=models, full_cfg=full_configs)
-    output: "output/multiverse.csv"
+    input: export_input
+    output: "output/{which}_multiverse.csv"
     script: "scripts/export.py"
+
+rule bias:
+    input: expand("output/data/{{cfg}}_{post}.json", post=cfgs), expand("output/samples/{{model}}/{{cfg}}_{post}/1.json", post=cfgs), 
+    output: "output/bias/{model}/{cfg}.json"
+    script: "scripts/bias.jl"
 
 rule reloo:
     resources:

@@ -1,3 +1,4 @@
+source(".Rprofile")
 library(ggplot2)
 library(ggdist)
 library(patchwork)
@@ -5,6 +6,13 @@ library(dplyr)
 library(rjson)
 library(tikzDevice)
 
+save_plot <-function(plot, filename){
+    if(endsWith(filename, "png")){
+        ggsave(filename, plot)
+    }else{
+        save_tikz_plot(plot, filename)
+    }
+}
 # define plot saving method
 save_tikz_plot <- function(
         plot, filename, width = NA, height = NA, asp = NA

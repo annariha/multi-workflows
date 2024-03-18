@@ -18,4 +18,14 @@ Run
 Running either of the above snakemake commands generates the files `output/quick_multiverse.csv` or `output/full_multiverse.csv` respectively
 and various files containing posterior draws in the subfolder `output/samples`. 
 
-Stay tuned for more instructions.
+# Plotting
+
+The snakefile exposes the targets `output/plots/{which}_treatment.{ext}`, where 
+
+* `which` can be either of `quick`, `medium` or `full`, and
+* `ext` can be either `png` (for quick inspection) or `tex` (for the manuscript).
+
+# Additional targets
+
+* `output/plots/funnel.{ext}`: Visualization of the funnel and divergences for a simple model.
+* `output/plots/{which}_elpd.{ext}`: Quick elpd comparison of models within a chosen multiverse.
