@@ -23,6 +23,11 @@ rule quick:
 rule full:
     input: "output/full_multiverse.csv"
 
+rule visualize_elpd:
+    input: "output/{cfg}_multiverse.csv"
+    output: "output/plots/{cfg}_elpd.{ext}"
+    script: "scripts/elpd.R"
+
 rule quick_export:
     input: expand("output/reloo/{model}/{full_cfg}.json", model=models, full_cfg=quick_configs)
     output: "output/quick_multiverse.csv"
