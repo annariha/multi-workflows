@@ -13,7 +13,7 @@ nc <- detectCores() - 2
 options(mc.cores = nc) 
 
 # load functions
-source(here::here("case-studies", "epilepsy", "R", "eval_computation.R"))
+source(here::here("case-studies", "epilepsy", "R", "check_computation.R"))
 
 # load modelfits 
 models_combs_df <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "models_combs_df.rds"))
