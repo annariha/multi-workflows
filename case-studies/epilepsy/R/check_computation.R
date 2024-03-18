@@ -4,10 +4,10 @@
 
 # Rhat for treatment ####
 # works for "b_Trt1" (and eventually "b_zBase:Trt1" if present)
-get_rhat_trt <- function(modelfit){
+get_rhat_trt <- function(modelfit, parameter_string = "Trt1"){
   rhats = brms::rhat(modelfit)
   # find "b_Trt1" (and if present "b_zBase:Trt1")
-  rhat_trt = rhats[str_detect(names(rhats), regex("Trt1", ignore_case = TRUE))]
+  rhat_trt = rhats[str_detect(names(rhats), regex(parameter_string, ignore_case = TRUE))]
   rhat_trt = as.numeric(rhat_trt[1])
   return(rhat_trt)
 }
