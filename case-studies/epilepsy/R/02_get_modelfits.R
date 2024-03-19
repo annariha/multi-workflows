@@ -35,7 +35,6 @@ models_combs_df <- combinations_df |>
 #purrr::pmap(helper_data, brms::make_stancode)
 
 # workhorse: fit models ####
-# takes around 5029.47 sec
 tic()
 future::plan(multisession)
 models_combs_df$modelfits <- combinations_df |>
@@ -46,6 +45,7 @@ models_combs_df$modelfits <- combinations_df |>
   furrr::future_map(~build_fit(.x, dataset = brms::epilepsy), 
                     .options=furrr_options(seed=TRUE))
 toc()
+future::plan(sequential)
 
 # add draws df ####
 models_combs_df <- models_combs_df |>

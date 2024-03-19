@@ -15,7 +15,7 @@ set.seed(42424242)
 source(here::here("R", "save_tikz_plot.R"))
 source(here::here("case-studies", "epilepsy", "R", "get_one_ecdf_overlay.R"))
 
-# load comparisons df obtained with epi-1/get_comparisons_incl_plots.R
+# load comparisons df obtained with epi-1/get_comparisons_epi1.R
 full_comparisons_df_reduced <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "epi-1", "full_comparisons_df_reduced.rds"))
 
 # plot: ECDF plots of best Poisson model and corresponding Negative Binomial model ####

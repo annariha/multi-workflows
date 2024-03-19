@@ -16,7 +16,7 @@ source(here::here("case-studies", "epilepsy", "R", "get_plot_posterior_trt_coeff
 filedir = here::here("case-studies", "epilepsy", "figures", "epi-2")
 if (!dir.exists(filedir)) {dir.create(filedir)}
 
-# load plot data obtained with epi-2/plot_dfs_posterior_trt.R
+# load plot data obtained with epi-2/plot_dfs_posterior_trt_epi2.R
 plot_df_trt_all_default <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "epi-2", "plot_df_trt_all_default.rds"))
 plot_df_trt_filtered <- readr::read_rds(here::here("case-studies", "epilepsy", "results", "epi-2", "plot_df_trt_filtered.rds"))
 

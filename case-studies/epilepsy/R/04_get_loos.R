@@ -34,8 +34,7 @@ loos_default <- models_combs_df |>
   pull(data) |>
   furrr::future_map(~build_loos(.x, dataset = brms::epilepsy), .options=furrr_options(seed=TRUE))
 toc()
-
-#closeAllConnections()
+future::plan(sequential)
 
 # set names for loo objects
 names(loos_default) <- models_combs_df$modelnames

@@ -1,5 +1,8 @@
 #! /usr/bin/Rscript --vanilla
 
+# set environment profile for epilepsy case studies 
+Sys.setenv(RENV_PROFILE = "case-study-epilepsy")
+  
 # load packages 
 if(!requireNamespace("pacman")) install.packages("pacman")
 

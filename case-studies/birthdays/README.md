@@ -1,8 +1,8 @@
 # Set up
 
-* Install julia 1.10 (see e.g. [https://github.com/JuliaLang/juliaup](https://github.com/JuliaLang/juliaup)) and instantiate project via [`julia --project=. -e "using Pkg; Pkg.instantiate()"`](https://pkgdocs.julialang.org/v1/environments/#Using-someone-else's-project).
-* Install [`poetry`](https://python-poetry.org/) and install dependencies via [`poetry install`](https://python-poetry.org/docs/basic-usage/#installing-dependencies).
-* Switch to this subproject from `multi-workflows` with `renv::activate(project = "case-studies/birthdays")` and initialize [`renv`](https://rstudio.github.io/renv/index.html) via [`renv::restore()`](https://rstudio.github.io/renv/reference/restore.html)
+* Install julia 1.10 (see e.g. [https://github.com/JuliaLang/juliaup](https://github.com/JuliaLang/juliaup)) and instantiate the project in `case-studies/birthdays` via [`julia --project=. -e "using Pkg; Pkg.instantiate()"`](https://pkgdocs.julialang.org/v1/environments/#Using-someone-else's-project).
+* Install [`poetry`](https://python-poetry.org/) and install dependencies via [`poetry install`](https://python-poetry.org/docs/basic-usage/#installing-dependencies). This requires a Python version >= 3.10.
+* Initialize [`renv`](https://rstudio.github.io/renv/index.html) via [`renv::restore()`](https://rstudio.github.io/renv/reference/restore.html)
 
 # Running
 

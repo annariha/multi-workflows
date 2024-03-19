@@ -39,21 +39,17 @@ vignettes/*.pdf
 # R Environment Variables
 .Renviron
 
+# figures
+figures/
+
 # case studies 
+case-studies/epilepsy/*.html
 case-studies/epilepsy/figures/
 case-studies/epilepsy/figures_poster/
 case-studies/epilepsy/results/
 case-studies/epilepsy/doc/
 case-studies/birthdays/figures/
 case-studies/birthdays/data/
-
-# simulation study outputs 
-sim-studies/irrelevant-covars/outputs/
-sim-studies/relevant-covars/outputs/
-
-# snakemake 
-sim-studies/relevant-covars/.snakemake/
-sim-studies/relevant-covars/.snakemake/metadata/
 
 # VS Code settings
 .vscode

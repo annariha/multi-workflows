@@ -21,12 +21,3 @@ build_loo <- function(row, dataset, ...){
     return(rv)
   #}
 } 
-
-################################################################################
-
-build_loo_rstan <- function(row, ...){
-  file_name = paste0(digest::digest(build_name(row), algo="md5"), "_loo_rstan.rds")
-  rv = loo(build_fit_rstan(row), moment_match = TRUE)
-  saveRDS(rv, file_name)
-  return(rv)
-} 
