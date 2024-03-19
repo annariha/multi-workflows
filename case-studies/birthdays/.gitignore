@@ -1,0 +1,4 @@
+.snakemake
+output
+__pycache__
+Rplots.pdf

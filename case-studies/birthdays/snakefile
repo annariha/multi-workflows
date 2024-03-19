@@ -1,0 +1,119 @@
+models=["birthday"]
+n1s = [0,32]
+n2s = [0,16]
+n3s = [0,32]
+dows = [0,1]
+floatings = [0,1]
+doys = [1,2,3]
+likelihoods = [1,2]
+cfgs = ["noncentered", "posthoc"]
+seeds = [1,2,3,4]
+def sample_runtime_estimate(wildcards, attempt):
+    return [-5, 5, 30, 10*60, 100*60][attempt]
+
+configs = dict(
+    full=expand(
+        "{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", 
+        n1=n1s, n2=n2s, n3=n3s, dow=dows, floating=floatings, doy=doys, likelihood=likelihoods, cfg=cfgs
+    ),
+    quick=expand(
+        "{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", 
+        n1=n1s[:1], n2=n2s[:1], n3=n3s[:1], dow=dows[:1], floating=floatings[:1], doy=doys[:1], likelihood=likelihoods, cfg=cfgs
+    ),
+    medium=expand(
+        "{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_{cfg}", 
+        n1=n1s[1:], n2=n2s[1:], n3=n3s[1:], dow=dows[1:], floating=floatings[1:], doy=doys[1:], likelihood=likelihoods[1:], cfg=cfgs
+    )
+)
+
+def export_input(wildcards):
+    full_cfgs = configs[wildcards.which]
+    return expand("output/reloo/{model}/{full_cfg}.json", model=models, full_cfg=full_cfgs)
+
+def treatment_input(wildcards):
+    full_cfgs = configs[dict(quick="quick").get(wildcards.which, "medium")]
+    return ["output/{which}_multiverse.csv"] + expand("output/reloo/{model}/{full_cfg}.json", model=models, full_cfg=full_cfgs)
+
+wildcard_constraints:
+    model="[a-z]+", seed="[0-9]+"
+
+rule quick:
+    input: "output/quick_multiverse.csv"
+
+rule full:
+    input: "output/full_multiverse.csv"
+
+rule treatment:
+    input: treatment_input
+    output: "output/plots/{which}_treatment.{ext}"
+    script: "scripts/treatment.R"
+
+rule visualize_elpd:
+    input: "output/{which}_multiverse.csv"
+    output: "output/plots/{which}_elpd.{ext}"
+    script: "scripts/elpd.R"
+
+rule visualize_funnel:
+    input: "output/bias/birthday/0_0_0_0_0_3_2.json"
+    output: "output/plots/funnel.{ext}"
+    script: "scripts/funnel.R"
+
+rule export:
+    input: export_input
+    output: "output/{which}_multiverse.csv"
+    script: "scripts/export.py"
+
+rule bias:
+    input: expand("output/data/{{cfg}}_{post}.json", post=cfgs), expand("output/samples/{{model}}/{{cfg}}_{post}/1.json", post=cfgs), 
+    output: "output/bias/{model}/{cfg}.json"
+    script: "scripts/bias.jl"
+
+rule reloo:
+    resources:
+        runtime=sample_runtime_estimate
+    retries: 3
+    input: "models/{model}loo", "output/data/{cfg}.json", "output/qois/{model}/{cfg}.json"
+    output: "output/reloo/{model}/{cfg}.json"
+    script: "scripts/reloo.py"
+
+rule qois:
+    resources:
+        mem_mb=10000
+    input: "models/{model}_model.so", "output/data/{cfg}.json", expand("output/samples/{{model}}/{{cfg}}/{seed}.json", seed=seeds)
+    output: "output/qois/{model}/{cfg}.json"
+    script: "scripts/qois.jl"
+
+rule update_data:
+    input: "output/data/{cfg}_noncentered.json", "output/samples/birthday/{cfg}_noncentered/1.json", "output/samples/birthday/{cfg}_noncentered/posthoc_1.json"
+    output: "output/data/{cfg}_posthoc.json"
+    script: "scripts/update_data.jl"
+
+rule posthoc:
+    resources:
+        runtime=10, mem_mb=2000
+    input: "output/data/{cfg}.json", "output/samples/{model}/{cfg}/{seed}.json"
+    output: "output/samples/{model}/{cfg}/posthoc_{seed}.json"
+    script: "scripts/posthoc.jl"
+
+rule sample:
+    resources:
+        runtime=sample_runtime_estimate
+    retries: 3
+    input: "models/{model}", "output/data/{cfg}.json"
+    output: "output/samples/{model}/{cfg}/{seed}.json"
+    script: "scripts/sample.py"
+
+rule prepare_data:
+    input: "input/births_usa_1969.csv"
+    output: "output/data/{n1}_{n2}_{n3}_{dow}_{floating}_{doy}_{likelihood}_noncentered.json"
+    script: "scripts/prepare_data.py"
+
+rule bridgestan:
+    input: "models/{model}.stan", "models/functions.stan"
+    output: "models/{model}_model.so"
+    script: "scripts/bridgestan.jl"
+
+rule compile:
+    input: "models/{model}.stan", "models/functions.stan"
+    output: "models/{model}"
+    script: "scripts/compile.py"

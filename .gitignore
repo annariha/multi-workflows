@@ -54,3 +54,6 @@ sim-studies/relevant-covars/outputs/
 # snakemake 
 sim-studies/relevant-covars/.snakemake/
 sim-studies/relevant-covars/.snakemake/metadata/
+
+# VS Code settings
+.vscode
